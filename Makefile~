@@ -1,0 +1,107 @@
+PROG = OpenLTEPhy
+CC = g++
+CPPFLAGS = -g -Wall -I./liblte/hdr -I./hdr  -I./libtools/hdr -L~/Desktop/OpenLTE_Phy_Test 
+LIBS = -lm -lstdc++ -lfftw3f -lboost_system -lpthread -lrt
+.SUFFIXS: .c .cpp .cc 
+OBJS = 	main.o 				\
+		liblte_common.o 	\
+		liblte_interface.o 	\
+		liblte_phy.o 		\
+		liblte_mac.o 		\
+		liblte_mme.o 		\
+		liblte_pdcp.o 		\
+		liblte_rlc.o 		\
+		liblte_rrc.o 		\
+		liblte_security.o 	\
+		libtools_socket_wrap.o\
+		LTE_fdd_enb_msgq.o	\
+		LTE_fdd_enb_mac.o   \
+		LTE_fdd_enb_cnfg_db.o\
+		LTE_fdd_enb_timer_mgr.o\
+		LTE_fdd_enb_timer.o \
+		LTE_fdd_main.o \
+		LTE_fdd_enb_interface.o 	\
+
+		#LTE_file.o          \
+		#LTE_fdd_enb_phy.o 	\
+		#libtools_socket_wrap.o\
+		#LTE_fdd_enb_radio.o \
+		
+
+
+
+$(PROG):$(OBJS) 
+	$(CC) -o $(PROG) $(OBJS) $(LIBS)
+
+main.o: 
+	$(CC) $(CPPFLAGS) -c main.cpp
+
+LTE_fdd_main.o:
+	$(CC) $(CPPFLAGS) -c ./LTE_fdd_main.cc
+
+LTE_file.o:
+	$(CC) $(CPPFLAGS) -c ./hdr/LTE_file.cc
+
+liblte_common.o:
+	$(CC) $(CPPFLAGS) -c ./liblte/src/liblte_common.cc
+
+liblte_interface.o:
+	$(CC) $(CPPFLAGS) -c ./liblte/src/liblte_interface.cc ./LTE_fdd_main.cc
+
+liblte_mac.o:
+	$(CC) $(CPPFLAGS) -c ./liblte/src/liblte_mac.cc
+
+liblte_mme.o:
+	$(CC) $(CPPFLAGS) -c ./liblte/src/liblte_mme.cc
+
+liblte_pdcp.o:
+	$(CC) $(CPPFLAGS) -c ./liblte/src/liblte_pdcp.cc
+
+liblte_phy.o:
+	$(CC) $(CPPFLAGS) -c ./liblte/src/liblte_phy.cc
+
+liblte_rlc.o:
+	$(CC) $(CPPFLAGS) -c ./liblte/src/liblte_rlc.cc
+
+liblte_rrc.o:
+	$(CC) $(CPPFLAGS) -c ./liblte/src/liblte_rrc.cc
+
+libtools_socket_wrap.o:
+	$(CC) $(CPPFLAGS) -c ./libtools/src/libtools_socket_wrap.cc
+
+LTE_fdd_enb_phy.o:
+	$(CC) $(CPPFLAGS) -c ./LTE_fdd_enb_phy.cc
+
+LTE_fdd_enb_radio.o:
+	$(CC) $(CPPFLAGS) -c ./LTE_fdd_enb_radio.cc
+
+LTE_fdd_enb_interface.o:
+	$(CC) $(CPPFLAGS) -c ./LTE_fdd_enb_interface.cc
+
+LTE_fdd_enb_msgq.o:
+	$(CC) $(CPPFLAGS) -c ./LTE_fdd_enb_msgq.cc
+
+liblte_security.o:
+	$(CC) $(CPPFLAGS) -c ./liblte/src/liblte_security.cc
+libtools_socket_wrap.o:
+	$(CC) $(CPPFLAGS) -c ./libtools/src/libtools_socket_wrap.cc
+
+
+LTE_fdd_enb_cnfg_db.o:
+	$(CC) $(CPPFLAGS) -c ./LTE_fdd_enb_cnfg_db.cc
+
+LTE_fdd_enb_mac.o:
+	$(CC) $(CPPFLAGS) -c ./LTE_fdd_enb_mac.cc
+
+LTE_fdd_enb_timer_mgr.o: LTE_fdd_enb_timer.o
+	$(CC) $(CPPFLAGS) -c ./LTE_fdd_enb_timer_mgr.cc
+
+LTE_fdd_enb_timer.o:
+	$(CC) $(CPPFLAGS) -c ./LTE_fdd_enb_timer.cc
+
+#$(OBJS): 
+	#$(CC) $(CPPFLAGS) -c $*.cc
+
+.PHONY: clean
+clean:
+	rm -f core $(PROG) $(OBJS)

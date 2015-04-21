@@ -1,0 +1,7 @@
+g++ -g -I./liblte/hdr -I./hdr  -I./libtools/hdr   -c LTE_UE.cc
+g++ main.o liblte_common.o liblte_interface.o liblte_phy.o liblte_mac.o liblte_mme.o liblte_pdcp.o liblte_rlc.o liblte_rrc.o liblte_security.o libtools_socket_wrap.o LTE_fdd_enb_msgq.o LTE_fdd_enb_mac.o LTE_fdd_enb_cnfg_db.o LTE_fdd_enb_timer_mgr.o LTE_fdd_enb_timer.o LTE_fdd_enb_phy.o LTE_fdd_enb_radio.o LTE_fdd_enb_interface.o LTE_fdd_enb_user_mgr.o LTE_fdd_enb_user.o LTE_fdd_enb_hss.o LTE_UE.o                     -lm -lstdc++ -lfftw3f -lboost_system -lpthread -lrt -lboost_thread -luhd -lboost_program_options -o OpenLTE
+g++ UE.o LTE_UE.o liblte_phy.o liblte_common.o liblte_rrc.o -lm -lstdc++ -lfftw3f -lboost_system -lpthread -lrt -lboost_thread -luhd -lboost_program_options -g -o UE
+UE.o: In function `main':
+/home/lineagech/OpenLTE/UE.cpp:114: undefined reference to `LTE_fdd_dl_fs_samp_buf::phich_decoding(float*, float*, unsigned int)'
+collect2: error: ld returned 1 exit status
+make: *** [UE] Error 1

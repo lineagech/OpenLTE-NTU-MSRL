@@ -1,0 +1,67 @@
+PROG = OpenLTEPhy
+CC := g++
+CPPFLAGS = -g -Wall -I./liblte/hdr -I./hdr  -I./libtools/hdr -L~/Desktop/OpenLTE_Phy_Test 
+LIBS = -lm -lstdc++ -lfftw3f -lboost_system -lpthread -lrt
+
+DIR_liblte = ./liblte/src
+DIR_libtools = ./libtools/src
+DIR_enb_ue = .
+
+# wildcard => expand
+SRC_liblte = $( wildcard ${DIR_liblte}/*.cc )
+OBJ_liblte = $( patsubst %.cc, ${SRC_liblte}/%.o, $(notdir ${SRC_liblte}) )
+
+SRC_libtools = $( wildcard ${DIR_libtools}/*.cc )
+OBJ_libtools = $( patsubst %.cc, ${SRC_libtools}/%.o, $(notdir ${SRC_libtools}) )
+
+SRC_enb_ue = $( wildcard ${DIR_enb_ue}/*.cc )
+OBJ_enb_ue = $( patsubst %.cc, ${SRC_enb_ue}/%.o, $(notdir ${SRC_enb_ue}) )
+
+OBJS = 	main.o 						\
+		liblte_common.o 			\
+		liblte_interface.o 			\
+		liblte_phy.o 				\
+		liblte_mac.o 				\
+		liblte_mme.o 				\
+		liblte_pdcp.o 				\
+		liblte_rlc.o 				\
+		liblte_rrc.o 				\
+		liblte_security.o 			\
+		libtools_socket_wrap.o 		\
+		LTE_fdd_enb_msgq.o			\
+		LTE_fdd_enb_mac.o   		\
+		LTE_fdd_enb_cnfg_db.o 		\
+		LTE_fdd_enb_timer_mgr.o 	\
+		LTE_fdd_enb_timer.o 		\
+		LTE_fdd_main.o 				\
+		LTE_fdd_enb_interface.o 	\
+		LTE_fdd_enb_user_mgr.o 		\
+		LTE_fdd_enb_user.o  		\
+		LTE_UE.o
+
+.SUFFIXS: .c .cpp .cc 
+
+all:$(PROG)
+
+
+$(PROG):$(OBJS) 
+	$(CC) $(OBJS) $(LIBS) -o $@
+
+main.o:main.cpp
+	$(CC) $(CPPFLAGS) -c $<
+
+%.o:${DIR_liblte}/%.cc
+	$(CC) $(CPPFLAGS) -c $<
+
+%.o:${DIR_libtools}/%.cc
+	$(CC) $(CPPFLAGS) -c $<
+
+%.o:${DIR_enb_ue}/%.cc
+	$(CC) $(CPPFLAGS) -c $<
+
+
+
+
+.PHONY: clean 
+clean:
+	@rm -f core $(PROG) $(OBJS); 
