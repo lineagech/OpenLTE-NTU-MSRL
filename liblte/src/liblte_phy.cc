@@ -3504,7 +3504,9 @@ LIBLTE_ERROR_ENUM liblte_phy_detect_prach_Chang(LIBLTE_PHY_STRUCT *phy_struct,
         // }   
 
         ave_val = abs_corr/phy_struct->prach_N_zc;
+
         cerr << "preamble root idx is "<<max_root<< endl;
+        
         if(max_val >= 50*ave_val &&
            max_val != 0)
         {
