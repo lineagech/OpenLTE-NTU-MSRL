@@ -44,7 +44,10 @@ OBJS = 	BS.o 						\
 		LTE_message_queue.o         \
 		#LTE_UE.o
 
+
 OBJS_mq = $(subst BS,BS_mq,$(OBJS))
+
+ECHO      = /bin/echo
 
 .SUFFIXS: .c .cpp .cc 
 
@@ -86,7 +89,9 @@ UE.o:UE.cpp
 	$(CC) $(CPPFLAGS) -c $<
 
 
-.PHONY: clean
+.PHONY: clean depend
 clean:
 	@rm -f core $(PROG) $(OBJS) UE UE.o LTE_UE.o BS_mq UE_mq BS_mq.o UE_mq.o
+
+
 

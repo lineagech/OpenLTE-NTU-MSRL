@@ -209,7 +209,7 @@ public:
 
     /*** Decode Process ***/
     uint32  execute(float* i_data, float* q_data, uint32 len);
-    uint32  cell_search(float* i_data, float* q_data, uint32 len);
+    uint32  cell_search(float* i_data, float* q_data, uint32 len, uint32* neg_offset);
     uint32  pbch_decoding(float* i_data, float* q_data, uint32 len);
     uint32  sib1_decoding(float* i_data, float* q_data, uint32 len);
     uint32  dlsch_decoding(float* i_data, float* q_data, uint32 len, uint32 subfr_num);

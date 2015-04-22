@@ -178,6 +178,7 @@ LTE_FDD_ENB_ERROR_ENUM LTE_fdd_enb_radio::start(void)
                     usrp->set_rx_rate(get_sample_rate());
                     //usrp->set_tx_freq((double)liblte_interface_dl_earfcn_to_frequency(dl_earfcn));
                     //usrp->set_rx_freq((double)liblte_interface_ul_earfcn_to_frequency(ul_earfcn));
+                    
                     usrp->set_tx_freq(2.0*1e9); // downlink 2G Hz
                     usrp->set_rx_freq(2.5*1e9); // uplink  2.5G Hz
                     usrp->set_tx_gain(tx_gain);

@@ -251,7 +251,7 @@ void LTE_fdd_dl_fs_samp_buf::init(void)
 
 }
 
-uint32 LTE_fdd_dl_fs_samp_buf::cell_search(float* i_data, float* q_data, uint32 len=9600)
+uint32 LTE_fdd_dl_fs_samp_buf::cell_search(float* i_data, float* q_data, uint32 len, uint32* neg_offset)
 {
     LIBLTE_PHY_COARSE_TIMING_STRUCT  *boundary;
     uint32                            pss_symb;
@@ -295,6 +295,12 @@ uint32 LTE_fdd_dl_fs_samp_buf::cell_search(float* i_data, float* q_data, uint32 
     fprintf(stderr, "Compensate ICFO by PSS and freq offset is %10f...\n",freq_offset);
     fprintf(stderr, "N_id_2 is %d...\n",N_id_2);
 
+    if(timing_struct.symb_starts[0][0]<0)
+    {
+        *neg_offset = phy_struct->N_samps_per_frame/2 + timing_struct.symb_starts[0][0]; 
+        return phy_struct->N_samps_per_frame/2;
+    }    
+
     liblte_phy_find_sss_Chang(phy_struct,
                               &i_buf[0],
                               &q_buf[0],
@@ -324,10 +330,11 @@ uint32 LTE_fdd_dl_fs_samp_buf::cell_search(float* i_data, float* q_data, uint32 
 uint32 LTE_fdd_dl_fs_samp_buf::execute(float* i_data, float* q_data, uint32 len)
 {
     Radio* ul_radio = Radio::get_instance();
+    uint32 neg_offset;
     switch(recv_state)
     {
         case CELL_SEARCH_STATE:
-            cell_search(i_data, q_data, len);
+            cell_search(i_data, q_data, len, &neg_offset);
             break;
         case PBCH_DECODE_STATE: 
             ul_radio->send_from_buffer(ZERO_SIGNAL, ZERO_SIGNAL, 1920);
@@ -855,24 +862,24 @@ void LTE_fdd_dl_fs_samp_buf::ul_process()
 
 
     // test
-    float samps_re[1920];
-    float samps_im[1920];
-    uint32 N_det_pre;
-    uint32 det_pre;
-    uint32 det_ta;
-    liblte_phy_generate_prach(phy_struct,
-                              5,
-                              0, // freq_offset
-                              samps_re,
-                              samps_im);
+    // float samps_re[1920];
+    // float samps_im[1920];
+    // uint32 N_det_pre;
+    // uint32 det_pre;
+    // uint32 det_ta;
+    // liblte_phy_generate_prach(phy_struct,
+    //                           5,
+    //                           0, // freq_offset
+    //                           samps_re,
+    //                           samps_im);
 
-    liblte_phy_detect_prach_Chang(phy_struct,
-                            samps_re,
-                            samps_im,
-                            0,
-                            &N_det_pre,
-                            &det_pre,
-                            &det_ta);
+    // liblte_phy_detect_prach_Chang(phy_struct,
+    //                         samps_re,
+    //                         samps_im,
+    //                         0,
+    //                         &N_det_pre,
+    //                         &det_pre,
+    //                         &det_ta);
 
 
 }
@@ -3546,6 +3553,7 @@ void* Radio::recv_to_buffer(void* inputs)
     uint32                           samp_idx       = 0;
     uint32                           num_samps      = 0;
     uint32                           radio_idx      = 0;
+    uint32                           neg_offset     = 0;
     uint16                           rx_current_tti = (LTE_FDD_ENB_CURRENT_TTI_MAX + 1) - 2;
     bool                             init_needed    = true;
     bool                             rx_synced      = false;
@@ -3611,7 +3619,15 @@ void* Radio::recv_to_buffer(void* inputs)
                             rx_radio_buf[buf_idx].q_buf[samp_idx+i] = recv_buff[recv_idx+i].imag();
                         }
                         samp_idx    = 0;
-                        recv_size   = UE->cell_search(rx_radio_buf[buf_idx].i_buf, rx_radio_buf[buf_idx].q_buf, 9600);
+                        recv_size   = UE->cell_search(rx_radio_buf[buf_idx].i_buf, rx_radio_buf[buf_idx].q_buf, 9600, &neg_offset);
+                    
+                        if(neg_offset > 0)
+                        {
+                            num_samps = usrp->get_device()->recv(&recv_buff.front(), neg_offset, rx_md, 
+                                                                 uhd::io_type_t::COMPLEX_FLOAT32,
+                                                                 uhd::device::RECV_MODE_FULL_BUFF);
+                        }
+
                     }
                 }
             }
@@ -3670,7 +3686,7 @@ void Radio::init()
     devs                = uhd::device::find(hint);
     usrp                = uhd::usrp::multi_usrp::make(devs[0]); // device_addrs_t
 
-    init_usrp(1.92*1e6, 0.4*1e9, 40, false);
+    init_usrp(1.92*1e6, 0.5*1e9, 40, false);
     uhd::stream_args_t    stream_args("fc32");
 
     tx_stream  = usrp->get_tx_stream(stream_args);
@@ -3722,6 +3738,7 @@ void* Radio::recv_from_mq(void* inputs)
     uint32                           samp_idx       = 0;
     uint32                           num_samps      = 0;
     uint32                           radio_idx      = 0;
+    uint32                           neg_offset     = 0;
     uint16                           rx_current_tti = (LTE_FDD_ENB_CURRENT_TTI_MAX + 1) - 2;
     float                            I_Buf[19200]   ;
     float                            Q_Buf[19200]   ;
@@ -3757,7 +3774,7 @@ void* Radio::recv_from_mq(void* inputs)
 
                     }else{
                         samp_idx    = 0;
-                        recv_size   = UE->cell_search(I_Buf, Q_Buf, 9600);
+                        recv_size   = UE->cell_search(I_Buf, Q_Buf, 9600, &neg_offset);
                     }
                 }
             }
@@ -3787,10 +3804,11 @@ void* Radio::recv_from_mq(void* inputs)
 uint32 LTE_fdd_dl_fs_samp_buf::mq_execute(float* i_data, float* q_data, uint32 len)
 {
     MessageQueue* ul_radio = MessageQueue::get_instance();
+    uint32        neg_offset;
     switch(recv_state)
     {
         case CELL_SEARCH_STATE:
-            cell_search(i_data, q_data, len);
+            cell_search(i_data, q_data, len, &neg_offset);
             break;
         case PBCH_DECODE_STATE: 
             ul_radio->ul_send_to_mq(ZERO_SIGNAL, ZERO_SIGNAL, 1920);
