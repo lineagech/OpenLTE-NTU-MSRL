@@ -796,7 +796,7 @@ uint32 LTE_fdd_dl_fs_samp_buf::dlsch_decoding(float* i_data, float* q_data, uint
         current_tti  = (current_tti+1)%(LTE_FDD_ENB_CURRENT_TTI_MAX+1);
         sfn          = (current_tti%10==0) ? ++sfn : sfn;
         return 1;
-    }else{
+    }else if(Alloc_Info.chan_type == LIBLTE_PHY_CHAN_TYPE_DLSCH){
         fprintf(stderr, "\n=== Downlink Scheduling at tti %d ===\n\n", current_tti);
         if(LIBLTE_SUCCESS == liblte_phy_pdsch_channel_decode(phy_struct,
                                                              subframe,
@@ -816,7 +816,7 @@ uint32 LTE_fdd_dl_fs_samp_buf::dlsch_decoding(float* i_data, float* q_data, uint
             // need to report ACK to BS
             harq_proc[0].HARQ_FEEDBACK = 1;
 
-            //recv_state  = PUCCH_REPORT_STATE;
+            recv_state  = PUCCH_REPORT_STATE;
 
             time_to_op  = (current_tti+4) % (LTE_FDD_ENB_CURRENT_TTI_MAX+1);
             current_tti = (current_tti+1)%(LTE_FDD_ENB_CURRENT_TTI_MAX+1);
@@ -830,7 +830,7 @@ uint32 LTE_fdd_dl_fs_samp_buf::dlsch_decoding(float* i_data, float* q_data, uint
             // need to report NACK to BS
             harq_proc[0].HARQ_FEEDBACK = 0;
 
-            //recv_state  = PUCCH_REPORT_STATE;
+            recv_state  = PUCCH_REPORT_STATE;
 
             time_to_op  = (current_tti+4) % (LTE_FDD_ENB_CURRENT_TTI_MAX+1);
             current_tti = (current_tti+1)%(LTE_FDD_ENB_CURRENT_TTI_MAX+1);
@@ -3522,7 +3522,7 @@ Radio* Radio::get_instance(void)
 
 Radio::Radio()
 {
-    init();
+    //init();
     recv_buff   = std::vector<std::complex<float> >(19200, std::complex<float>(0.0, 0.0));
     send_buff   = std::vector<std::complex<float> >(19200, std::complex<float>(0.0, 0.0));
     started     = true;
@@ -3826,7 +3826,12 @@ uint32 LTE_fdd_dl_fs_samp_buf::mq_execute(float* i_data, float* q_data, uint32 l
             {
                 sib1_decoding(i_data, q_data, len);
             }else if(current_tti%10 != 0){
+                auto start_time = chrono::high_resolution_clock::now();
+                
                 dlsch_decoding(i_data, q_data, len, current_tti%10);
+                
+                auto end_time = chrono::high_resolution_clock::now();
+                cout << chrono::duration_cast<chrono::microseconds>(end_time - start_time).count() << " us" << endl;;
             }else{
                 tracking(i_data, q_data, len);
             }

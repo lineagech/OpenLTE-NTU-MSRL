@@ -6141,7 +6141,8 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_decode(LIBLTE_PHY_STRUCT             
                                                      0,
                                                      phy_struct->pdcch_dci,
                                                      dci_1a_size,
-                                                     &rnti) ||
+                                                     &rnti) 
+                /*||
                 LIBLTE_SUCCESS == dci_channel_decode(phy_struct,
                                                      phy_struct->pdcch_descramb_bits,
                                                      N_bits,
@@ -6159,7 +6160,8 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_decode(LIBLTE_PHY_STRUCT             
                                                      0,
                                                      phy_struct->pdcch_dci,
                                                      dci_1a_size,
-                                                     &rnti)))
+                                                     &rnti)*/
+                ))
             {
                 err = LIBLTE_SUCCESS;
                 dci_1a_unpack(phy_struct->pdcch_dci,
@@ -6267,7 +6269,8 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_decode(LIBLTE_PHY_STRUCT             
                                                      0,
                                                      phy_struct->pdcch_dci,
                                                      dci_1a_size,
-                                                     &rnti) ||
+                                                     &rnti) 
+               /*||
                 LIBLTE_SUCCESS == dci_channel_decode(phy_struct,
                                                      phy_struct->pdcch_descramb_bits,
                                                      N_bits,
@@ -6285,7 +6288,8 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_decode(LIBLTE_PHY_STRUCT             
                                                      0,
                                                      phy_struct->pdcch_dci,
                                                      dci_1a_size,
-                                                     &rnti)))
+                                                     &rnti)*/
+                ))
             {
                 err = LIBLTE_SUCCESS;
                 dci_1a_unpack(phy_struct->pdcch_dci,
@@ -6394,6 +6398,7 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_decode(LIBLTE_PHY_STRUCT             
                                 LIBLTE_PHY_MODULATION_TYPE_QPSK,
                                 phy_struct->pdcch_soft_bits,
                                 &N_bits);
+            #pragma omp parallel for
             for(j=0; j<N_bits; j++)
             {
                 phy_struct->pdcch_descramb_bits[j] = (float)phy_struct->pdcch_soft_bits[j]*(1-2*(float)phy_struct->pdcch_c[4*actual_idx*N_reg_cce*4*2+j]);
@@ -8494,7 +8499,7 @@ LIBLTE_ERROR_ENUM liblte_phy_dl_find_coarse_timing_and_freq_offset_Chang(LIBLTE_
             phy_struct->dl_timing_abs_corr[i] = 0;
         }
 
-        #pragma omp parallel for //private(symbol, j)
+        #pragma omp parallel for private(symbol, j)
         for(i=0; i<N_samps_per_symb_else; i++)
         {
             corr_re = 0;
@@ -10706,6 +10711,7 @@ void pcfich_channel_demap(LIBLTE_PHY_STRUCT          *phy_struct,
                         LIBLTE_PHY_MODULATION_TYPE_QPSK,
                         phy_struct->pdcch_soft_bits,
                         N_bits);
+    #pragma omp parallel for
     for(i=0; i<*N_bits; i++)
     {
         phy_struct->pdcch_descramb_bits[i] = (float)phy_struct->pdcch_soft_bits[i]*(1-2*(float)phy_struct->pdcch_c[i]);
@@ -11025,6 +11031,7 @@ void phich_channel_demap(LIBLTE_PHY_STRUCT              *phy_struct,
             // Step 1, 2, and 3
             n_l_prime = phy_struct->N_rb_dl*2 - pcfich->N_reg;
             // Step 8
+            #pragma omp parallel for
             for(i=0; i<3; i++)
             {
                 n_hat[i] = (N_id_cell + m_prime + i*n_l_prime/3) % n_l_prime;
@@ -11044,6 +11051,7 @@ void phich_channel_demap(LIBLTE_PHY_STRUCT              *phy_struct,
 
             // Step 5
             y_idx = 0;
+            #pragma omp parallel for private(j,p)
             for(i=0; i<3; i++)
             {
                 phich->k[idx+i] = n_hat[i]*6;
@@ -11066,6 +11074,7 @@ void phich_channel_demap(LIBLTE_PHY_STRUCT              *phy_struct,
                     }
                 }
             }
+            #pragma omp parallel for
             for(i=0; i<12; i++)
             {
                 phy_struct->pdcch_d_re[i] = 0;
@@ -11141,6 +11150,7 @@ void generate_crs(uint32  N_s,
     generate_prs_c(c_init, 2*len, c);
 
     // Construct the reference signals
+    #pragma omp parallel for
     for(i=0; i<len; i++)
     {
         crs_re[i] = one_over_sqrt_2*(1 - 2*(float)c[2*i]);
@@ -11445,12 +11455,16 @@ void samples_to_symbols_dl(LIBLTE_PHY_STRUCT *phy_struct,
         index += phy_struct->N_samps_cp_l_0 - phy_struct->N_samps_cp_l_else;
     }
 
+    #pragma omp parallel for
     for(i=0; i<phy_struct->N_samps_per_symb; i++)
     {
         phy_struct->s2s_in[i][0] = samps_re[index+CP_len-1+i];
         phy_struct->s2s_in[i][1] = samps_im[index+CP_len-1+i];
     }
+
     fftwf_execute(phy_struct->samps_to_symbs_dl_plan);
+
+    #pragma omp parallel for
     for(i=0; i<(phy_struct->FFT_size/2)-phy_struct->FFT_pad_size; i++)
     {
         // Positive spectrum
@@ -11464,6 +11478,7 @@ void samples_to_symbols_dl(LIBLTE_PHY_STRUCT *phy_struct,
 
     if(scale == 1)
     {
+        #pragma omp parallel for
         for(i=0; i<2*((phy_struct->FFT_size/2)-phy_struct->FFT_pad_size); i++)
         {
             symb_re[i] = cosf(atan2f(symb_im[i], symb_re[i]));
@@ -14432,6 +14447,7 @@ void rate_unmatch_conv(LIBLTE_PHY_STRUCT *phy_struct,
     }
 
     // Recreate the sub-block interleaver output
+    #pragma omp parallel for
     for(i=0; i<K_pi; i++)
     {
         phy_struct->ruc_v[0][i] = phy_struct->ruc_w[i];

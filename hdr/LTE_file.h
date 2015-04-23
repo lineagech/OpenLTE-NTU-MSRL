@@ -30,7 +30,7 @@ public:
 	LTE_File(const char* name, bool read_or_write=WRITE){
 
 		memcpy(path, zero, 1024);
-		strcat(path, "/home/lineagech/Dropbox/Sync/");
+		strcat(path, "./");
 		strcat(path, name);
 		if(read_or_write == WRITE)
 			fp = fopen(path, "w");

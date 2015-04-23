@@ -1,7 +1,7 @@
 PROG = BS
 PROG_Debug = Debug
 CC := g++
-CPPFLAGS = -g -I./liblte/hdr -I./hdr  -I./libtools/hdr  
+CPPFLAGS = -g -I./liblte/hdr -I./hdr  -I./libtools/hdr -std=c++11 
 LIBS = -lm -lstdc++ -lfftw3f -lboost_system -lpthread \
        -lrt -lboost_thread -luhd -lboost_program_options
 
