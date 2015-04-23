@@ -4,7 +4,6 @@
 !_TAG_PROGRAM_NAME	Exuberant Ctags	//
 !_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
 !_TAG_PROGRAM_VERSION	5.9~svn20110310	//
-ACK_or_NACK	PHICH_decode_test.cpp	/^	uint8                             ACK_or_NACK ;$/;"	v
 AWGN	hdr/receiver_2009_09_11.h	/^void AWGN(float *data_I, float *data_Q, unsigned long long arraylength, float var){$/;"	f
 Alloc_Info	hdr/LTE_UE.h	/^    LIBLTE_PHY_ALLOCATION_STRUCT    Alloc_Info;$/;"	m	class:LTE_fdd_dl_fs_samp_buf
 BCH_DECODE_NUM_FRAMES	LTE_UE.cc	17;"	d	file:
@@ -39,6 +38,7 @@ DCoffset	hdr/receiver_2009_09_11.h	/^void DCoffset(float* DC_I,float* DC_Q,float
 DIR_enb_ue	Makefile	/^DIR_enb_ue = .$/;"	m
 DIR_liblte	Makefile	/^DIR_liblte = .\/liblte\/src$/;"	m
 DIR_libtools	Makefile	/^DIR_libtools = .\/libtools\/src$/;"	m
+ECHO	Makefile	/^ECHO      = \/bin\/echo$/;"	m
 EXTRA_RADIO_DEBUG	LTE_fdd_enb_radio.cc	63;"	d	file:
 FFT_pad_size	liblte/hdr/liblte_phy.h	/^    uint32 FFT_pad_size;$/;"	m	struct:__anon427
 FFT_size	liblte/hdr/liblte_phy.h	/^    uint32 FFT_size;$/;"	m	struct:__anon427
@@ -2487,7 +2487,6 @@ N_ant	hdr/LTE_fdd_enb_cnfg_db.h	/^    uint32                                  N_
 N_ant	hdr/LTE_fdd_enb_radio.h	/^    int64            N_ant;$/;"	m	class:LTE_fdd_enb_radio
 N_avail_prbs	hdr/LTE_fdd_enb_msgq.h	/^    uint32                  N_avail_prbs;$/;"	m	struct:__anon37
 N_avail_prbs	hdr/LTE_fdd_enb_msgq.h	/^    uint32                  N_avail_prbs;$/;"	m	struct:__anon38
-N_bits	PHICH_decode_test.cpp	/^    uint32            N_bits;$/;"	v
 N_bits	liblte/hdr/liblte_common.h	/^    uint32 N_bits;$/;"	m	struct:__anon379
 N_bytes	liblte/hdr/liblte_common.h	/^    uint32 N_bytes;$/;"	m	struct:__anon380
 N_codewords	liblte/hdr/liblte_phy.h	/^    uint32                          N_codewords;$/;"	m	struct:__anon430
@@ -2507,7 +2506,6 @@ N_id_cell_crs	liblte/hdr/liblte_phy.h	/^    uint32 N_id_cell_crs;$/;"	m	struct:_
 N_items	liblte/hdr/liblte_mac.h	/^    uint8  N_items;$/;"	m	struct:__anon70
 N_layers	liblte/hdr/liblte_phy.h	/^    uint32                          N_layers;$/;"	m	struct:__anon430
 N_nack	liblte/hdr/liblte_rlc.h	/^    uint32 N_nack;$/;"	m	struct:__anon92
-N_out_bits	ul_test.cpp	/^    uint32 N_out_bits;$/;"	v
 N_plmn_ids	liblte/hdr/liblte_rrc.h	/^    uint32                                    N_plmn_ids;$/;"	m	struct:__anon309
 N_prb	liblte/hdr/liblte_phy.h	/^    uint32                          N_prb;$/;"	m	struct:__anon430
 N_rb_dl	hdr/LTE_fdd_enb_cnfg_db.h	/^    uint32                                  N_rb_dl;$/;"	m	struct:__anon7
@@ -2678,11 +2676,9 @@ additional_spectrum_emission	liblte/hdr/liblte_rrc.h	/^    uint8                
 additional_update_type	liblte/hdr/liblte_mme.h	/^    LIBLTE_MME_ADDITIONAL_UPDATE_TYPE_ENUM                   additional_update_type;$/;"	m	struct:__anon411
 additional_update_type_present	liblte/hdr/liblte_mme.h	/^    bool                                                     additional_update_type_present;$/;"	m	struct:__anon411
 ak	hdr/LTE_fdd_enb_hss.h	/^    uint8                                    ak[6];$/;"	m	struct:__anon58
-alloc	PHICH_decode_test.cpp	/^	LIBLTE_PHY_ALLOCATION_STRUCT*     alloc = new LIBLTE_PHY_ALLOCATION_STRUCT;$/;"	v
 alloc	hdr/LTE_fdd_enb_mac.h	/^    LIBLTE_PHY_ALLOCATION_STRUCT alloc;$/;"	m	struct:__anon61
 alloc	hdr/LTE_fdd_enb_mac.h	/^    LIBLTE_PHY_ALLOCATION_STRUCT alloc;$/;"	m	struct:__anon62
 alloc	liblte/hdr/liblte_phy.h	/^    LIBLTE_PHY_ALLOCATION_STRUCT alloc[LIBLTE_PHY_PDCCH_MAX_ALLOC];$/;"	m	struct:__anon431
-alloc	ul_test.cpp	/^    LIBLTE_PHY_ALLOCATION_STRUCT *alloc = new LIBLTE_PHY_ALLOCATION_STRUCT;$/;"	v
 alloc_chan_type	hdr/LTE_fdd_enb_user.h	/^    LIBLTE_PHY_CHAN_TYPE_ENUM           alloc_chan_type;$/;"	m	class:LTE_fdd_enb_user
 allowed_meas_bw	liblte/hdr/liblte_rrc.h	/^    LIBLTE_RRC_ALLOWED_MEAS_BANDWIDTH_ENUM         allowed_meas_bw;$/;"	m	struct:__anon277
 allowed_meas_bw	liblte/hdr/liblte_rrc.h	/^    LIBLTE_RRC_ALLOWED_MEAS_BANDWIDTH_ENUM      allowed_meas_bw;$/;"	m	struct:__anon281
@@ -2820,7 +2816,7 @@ cell_resel_prio_present	liblte/hdr/liblte_rrc.h	/^    bool                      
 cell_resel_prio_present	liblte/hdr/liblte_rrc.h	/^    bool                                cell_resel_prio_present;$/;"	m	struct:__anon288
 cell_resel_prio_present	liblte/hdr/liblte_rrc.h	/^    bool   cell_resel_prio_present;$/;"	m	struct:__anon283
 cell_resel_prio_present	liblte/hdr/liblte_rrc.h	/^    bool   cell_resel_prio_present;$/;"	m	struct:__anon284
-cell_search	LTE_UE.cc	/^uint32 LTE_fdd_dl_fs_samp_buf::cell_search(float* i_data, float* q_data, uint32 len=9600)$/;"	f	class:LTE_fdd_dl_fs_samp_buf
+cell_search	LTE_UE.cc	/^uint32 LTE_fdd_dl_fs_samp_buf::cell_search(float* i_data, float* q_data, uint32 len, uint32* neg_offset)$/;"	f	class:LTE_fdd_dl_fs_samp_buf
 cfi	liblte/hdr/liblte_phy.h	/^    uint32 cfi;$/;"	m	struct:__anon433
 cfi_channel_decode	liblte/src/liblte_phy.cc	/^LIBLTE_ERROR_ENUM cfi_channel_decode(LIBLTE_PHY_STRUCT *phy_struct,$/;"	f
 cfi_channel_encode	liblte/src/liblte_phy.cc	/^void cfi_channel_encode(LIBLTE_PHY_STRUCT *phy_struct,$/;"	f
@@ -3051,8 +3047,6 @@ emm_cause	liblte/hdr/liblte_mme.h	/^    uint8 emm_cause;$/;"	m	struct:__anon412
 emm_comb	liblte/hdr/liblte_mme.h	/^    bool                                   emm_comb;$/;"	m	struct:__anon393
 enable_64_qam	liblte/hdr/liblte_rrc.h	/^    bool                          enable_64_qam;$/;"	m	struct:__anon206
 enabled	liblte/hdr/liblte_rrc.h	/^    bool                              enabled;$/;"	m	struct:__anon268
-endl	PHICH_decode_test.cpp	/^	cout << ACK_or_NACK << endl;$/;"	v
-endl	ul_test.cpp	/^    cout<<"N_bits: "<<N_out_bits<<endl;$/;"	v
 epc	liblte/hdr/liblte_mme.h	/^    bool                                   epc;$/;"	m	struct:__anon393
 eps_bearer_id	liblte/hdr/liblte_mme.h	/^    uint8                                     eps_bearer_id;$/;"	m	struct:__anon419
 eps_bearer_id	liblte/hdr/liblte_rrc.h	/^    uint32                                   eps_bearer_id;$/;"	m	struct:__anon254
@@ -3104,7 +3098,6 @@ freq	hdr/LTE_UE.h	/^    double  freq;$/;"	m	class:Radio
 freq_band_indicator	liblte/hdr/liblte_rrc.h	/^    uint8                                     freq_band_indicator;$/;"	m	struct:__anon309
 freq_domain_pos	liblte/hdr/liblte_rrc.h	/^    uint32                                freq_domain_pos;$/;"	m	struct:__anon196
 freq_offset	liblte/hdr/liblte_phy.h	/^    float  freq_offset[LIBLTE_PHY_N_MAX_ROUGH_CORR_SEARCH_PEAKS];$/;"	m	struct:__anon435
-freq_offset_u	ul_test.cpp	/^    float  freq_offset_u[1024];$/;"	v
 freq_shift	LTE_UE.cc	/^void LTE_fdd_dl_fs_samp_buf::freq_shift(uint32 start_idx, uint32 num_samps, float freq_offset)$/;"	f	class:LTE_fdd_dl_fs_samp_buf
 freq_shift	LTE_fdd_dl_file_scan/src/LTE_fdd_dl_fs_samp_buf.cc	/^void LTE_fdd_dl_fs_samp_buf::freq_shift(uint32 start_idx, uint32 num_samps, float freq_offset)$/;"	f	class:LTE_fdd_dl_fs_samp_buf
 freq_shift_Chang	LTE_UE.cc	/^void LTE_fdd_dl_fs_samp_buf::freq_shift_Chang(uint32 start_idx, $/;"	f	class:LTE_fdd_dl_fs_samp_buf
@@ -3313,7 +3306,6 @@ hopping_mode	liblte/hdr/liblte_rrc.h	/^    LIBLTE_RRC_HOPPING_MODE_ENUM  hopping
 hrpd	liblte/hdr/liblte_rrc.h	/^    uint32 hrpd[4];$/;"	m	struct:__anon130
 hss_instance_mutex	LTE_fdd_enb_hss.cc	/^boost::mutex     hss_instance_mutex;$/;"	v
 i_buf	LTE_fdd_dl_file_scan/hdr/LTE_fdd_dl_fs_samp_buf.h	/^    float  *i_buf;$/;"	m	class:LTE_fdd_dl_fs_samp_buf
-i_buf	PHICH_decode_test.cpp	/^	float i_buf[19200];$/;"	v
 i_buf	hdr/LTE_UE.h	/^    float  *i_buf;$/;"	m	class:LTE_fdd_dl_fs_samp_buf
 i_buf	hdr/LTE_UE.h	/^    float  i_buf[4][LIBLTE_PHY_N_SAMPS_PER_SUBFR_30_72MHZ];$/;"	m	struct:__anon23
 i_buf	hdr/LTE_UE.h	/^    float  i_buf[LIBLTE_PHY_N_SAMPS_PER_SUBFR_30_72MHZ];$/;"	m	struct:__anon24
@@ -4345,7 +4337,6 @@ operator ()	LTE_fdd_enb_msgq.cc	/^void LTE_fdd_enb_msgq_cb::operator()(LTE_FDD_E
 operator ()	LTE_fdd_enb_timer.cc	/^void LTE_fdd_enb_timer_cb::operator()(uint32 id)$/;"	f	class:LTE_fdd_enb_timer_cb
 operator delete	hdr/LTE_fdd_main.h	/^    void  operator delete(void* ptr){ return free(ptr); }$/;"	f	class:LTE_fdd_enb_phy
 operator new	hdr/LTE_fdd_main.h	/^    void* operator new(size_t sz){ return malloc(sz); }$/;"	f	class:LTE_fdd_enb_phy
-out_bits	ul_test.cpp	/^    uint8  out_bits[1024];$/;"	v
 p	liblte/hdr/liblte_rlc.h	/^    LIBLTE_RLC_P_FIELD_ENUM  p;$/;"	m	struct:__anon90
 p0_nominal_pucch	liblte/hdr/liblte_rrc.h	/^    int8                                   p0_nominal_pucch;$/;"	m	struct:__anon235
 p0_nominal_pusch	liblte/hdr/liblte_rrc.h	/^    int32                                  p0_nominal_pusch;$/;"	m	struct:__anon257
@@ -4387,7 +4378,6 @@ pcap_fd	hdr/LTE_fdd_enb_interface.h	/^    FILE                 *pcap_fd;$/;"	m	c
 pcch_cnfg	liblte/hdr/liblte_rrc.h	/^    LIBLTE_RRC_PCCH_CONFIG_STRUCT             pcch_cnfg;$/;"	m	struct:__anon236
 pcch_msg	LTE_fdd_dl_file_scan/hdr/LTE_fdd_dl_fs_samp_buf.h	/^    LIBLTE_RRC_PCCH_MSG_STRUCT        pcch_msg;$/;"	m	class:LTE_fdd_dl_fs_samp_buf
 pcch_msg	hdr/LTE_UE.h	/^    LIBLTE_RRC_PCCH_MSG_STRUCT                  pcch_msg;$/;"	m	class:LTE_fdd_dl_fs_samp_buf
-pcfich	PHICH_decode_test.cpp	/^	LIBLTE_PHY_PCFICH_STRUCT                 pcfich;$/;"	v
 pcfich	hdr/LTE_UE.h	/^    LIBLTE_PHY_PCFICH_STRUCT                    pcfich;$/;"	m	class:LTE_fdd_dl_fs_samp_buf
 pcfich	hdr/LTE_fdd_enb_phy.h	/^    LIBLTE_PHY_PCFICH_STRUCT           pcfich;$/;"	m	class:LTE_fdd_enb_phy
 pcfich	hdr/LTE_fdd_main.h	/^    LIBLTE_PHY_PCFICH_STRUCT           pcfich;$/;"	m	class:LTE_fdd_enb_phy
@@ -4481,7 +4471,6 @@ periodic_bsr_timer_present	liblte/hdr/liblte_rrc.h	/^    bool                   
 periodic_phr_timer	liblte/hdr/liblte_rrc.h	/^    LIBLTE_RRC_PERIODIC_PHR_TIMER_ENUM periodic_phr_timer;$/;"	m	struct:__anon174
 pfc	liblte/hdr/liblte_mme.h	/^    bool                                   pfc;$/;"	m	struct:__anon393
 ph	liblte/hdr/liblte_mac.h	/^    uint8 ph;$/;"	m	struct:__anon68
-phich	PHICH_decode_test.cpp	/^    LIBLTE_PHY_PHICH_STRUCT                  phich;$/;"	v
 phich	hdr/LTE_UE.h	/^    LIBLTE_PHY_PHICH_STRUCT                     phich;$/;"	m	class:LTE_fdd_dl_fs_samp_buf
 phich	hdr/LTE_fdd_enb_phy.h	/^    LIBLTE_PHY_PHICH_STRUCT            phich[10];$/;"	m	class:LTE_fdd_enb_phy
 phich	hdr/LTE_fdd_main.h	/^    LIBLTE_PHY_PHICH_STRUCT            phich[10];$/;"	m	class:LTE_fdd_enb_phy
@@ -4504,7 +4493,6 @@ phy_instance_mutex	LTE_fdd_enb_phy.cc	/^boost::mutex     phy_instance_mutex;$/;"
 phy_instance_mutex	LTE_fdd_main.cc	/^boost::mutex phy_instance_mutex;$/;"	v
 phy_mac_mq	hdr/LTE_fdd_enb_phy.h	/^    boost::interprocess::message_queue *phy_mac_mq;$/;"	m	class:LTE_fdd_enb_phy
 phy_struct	LTE_fdd_dl_file_scan/hdr/LTE_fdd_dl_fs_samp_buf.h	/^    LIBLTE_PHY_STRUCT                *phy_struct;$/;"	m	class:LTE_fdd_dl_fs_samp_buf
-phy_struct	PHICH_decode_test.cpp	/^	LIBLTE_PHY_STRUCT          	   *phy_struct = new LIBLTE_PHY_STRUCT;$/;"	v
 phy_struct	hdr/LTE_UE.h	/^    LIBLTE_PHY_STRUCT                          *phy_struct;$/;"	m	class:LTE_fdd_dl_fs_samp_buf
 phy_struct	hdr/LTE_fdd_enb_phy.h	/^    LIBLTE_PHY_STRUCT *phy_struct;$/;"	m	class:LTE_fdd_enb_phy
 phy_struct	hdr/LTE_fdd_main.h	/^    LIBLTE_PHY_STRUCT *phy_struct;$/;"	m	class:LTE_fdd_enb_phy
@@ -4694,7 +4682,6 @@ pusch_z_im	liblte/hdr/liblte_phy.h	/^    float          pusch_z_im[LIBLTE_PHY_N_
 pusch_z_re	liblte/hdr/liblte_phy.h	/^    float          pusch_z_re[LIBLTE_PHY_N_ANT_MAX][14400];$/;"	m	struct:__anon427
 pwr_ramping_step	liblte/hdr/liblte_rrc.h	/^    LIBLTE_RRC_POWER_RAMPING_STEP_ENUM                     pwr_ramping_step;$/;"	m	struct:__anon217
 q_buf	LTE_fdd_dl_file_scan/hdr/LTE_fdd_dl_fs_samp_buf.h	/^    float  *q_buf;$/;"	m	class:LTE_fdd_dl_fs_samp_buf
-q_buf	PHICH_decode_test.cpp	/^	float q_buf[19200];$/;"	v
 q_buf	hdr/LTE_UE.h	/^    float  *q_buf;$/;"	m	class:LTE_fdd_dl_fs_samp_buf
 q_buf	hdr/LTE_UE.h	/^    float  q_buf[4][LIBLTE_PHY_N_SAMPS_PER_SUBFR_30_72MHZ];$/;"	m	struct:__anon23
 q_buf	hdr/LTE_UE.h	/^    float  q_buf[LIBLTE_PHY_N_SAMPS_PER_SUBFR_30_72MHZ];$/;"	m	struct:__anon24
@@ -5261,8 +5248,6 @@ subdev	hdr/LTE_UE.h	/^    string  subdev;$/;"	m	class:Radio
 subfr_alloc	liblte/hdr/liblte_rrc.h	/^    uint32                                         subfr_alloc;$/;"	m	struct:__anon97
 subfr_alloc_num_frames	liblte/hdr/liblte_rrc.h	/^    LIBLTE_RRC_SUBFRAME_ALLOCATION_NUM_FRAMES_ENUM subfr_alloc_num_frames;$/;"	m	struct:__anon97
 subfr_cnfg	liblte/hdr/liblte_rrc.h	/^    LIBLTE_RRC_SRS_SUBFR_CONFIG_ENUM subfr_cnfg;$/;"	m	struct:__anon233
-subframe	PHICH_decode_test.cpp	/^	LIBLTE_PHY_SUBFRAME_STRUCT*       subframe = new LIBLTE_PHY_SUBFRAME_STRUCT;$/;"	v
-subframe2	ul_test.cpp	/^    LIBLTE_PHY_SUBFRAME_STRUCT   *subframe2 = new LIBLTE_PHY_SUBFRAME_STRUCT;$/;"	v
 subheader	liblte/hdr/liblte_mac.h	/^    LIBLTE_MAC_PDU_SUBHEADER_STRUCT subheader[LIBLTE_MAC_MAX_MAC_PDU_N_SUBHEADERS];$/;"	m	struct:__anon75
 supported_codecs	liblte/hdr/liblte_mme.h	/^    LIBLTE_MME_SUPPORTED_CODEC_LIST_STRUCT                   supported_codecs;$/;"	m	struct:__anon411
 supported_codecs_present	liblte/hdr/liblte_mme.h	/^    bool                                                     supported_codecs_present;$/;"	m	struct:__anon411
@@ -5385,7 +5370,6 @@ timing_adv	hdr/LTE_fdd_enb_msgq.h	/^    uint32 timing_adv[64];$/;"	m	struct:__an
 timing_adv_cmd	liblte/hdr/liblte_mac.h	/^    uint16                          timing_adv_cmd;$/;"	m	struct:__anon81
 timing_struct	LTE_fdd_dl_file_scan/hdr/LTE_fdd_dl_fs_samp_buf.h	/^    LIBLTE_PHY_COARSE_TIMING_STRUCT   timing_struct;$/;"	m	class:LTE_fdd_dl_fs_samp_buf
 timing_struct	hdr/LTE_UE.h	/^    LIBLTE_PHY_COARSE_TIMING_STRUCT             timing_struct;$/;"	m	class:LTE_fdd_dl_fs_samp_buf
-timing_struct	ul_test.cpp	/^    LIBLTE_PHY_COARSE_TIMING_STRUCT         timing_struct;$/;"	v
 tmsi_status	liblte/hdr/liblte_mme.h	/^    LIBLTE_MME_TMSI_STATUS_ENUM                              tmsi_status;$/;"	m	struct:__anon411
 tmsi_status_present	liblte/hdr/liblte_mme.h	/^    bool                                                     tmsi_status_present;$/;"	m	struct:__anon411
 total_zone	liblte/hdr/liblte_rrc.h	/^    uint8  total_zone;$/;"	m	struct:__anon124

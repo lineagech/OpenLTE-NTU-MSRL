@@ -32,7 +32,7 @@ RX_find_fft_size	LTE_UE.cc	/^int RX_find_fft_size(LTE_FDD_ENB_RADIO_RX_BUF_FOR_1
 Radio	LTE_UE.cc	/^Radio::Radio()$/;"	f	class:Radio
 SCO_compensate	LTE_UE.cc	/^void LTE_fdd_dl_fs_samp_buf::SCO_compensate(LIBLTE_PHY_STRUCT          *phy_struct,$/;"	f	class:LTE_fdd_dl_fs_samp_buf
 SSS_SEARCH_NUM_SUBFRAMES	LTE_UE.cc	16;"	d	file:
-cell_search	LTE_UE.cc	/^uint32 LTE_fdd_dl_fs_samp_buf::cell_search(float* i_data, float* q_data, uint32 len=9600)$/;"	f	class:LTE_fdd_dl_fs_samp_buf
+cell_search	LTE_UE.cc	/^uint32 LTE_fdd_dl_fs_samp_buf::cell_search(float* i_data, float* q_data, uint32 len, uint32* neg_offset)$/;"	f	class:LTE_fdd_dl_fs_samp_buf
 change_config	LTE_UE.cc	/^void LTE_fdd_dl_fs_samp_buf::change_config(char *line)$/;"	f	class:LTE_fdd_dl_fs_samp_buf
 dlsch_decoding	LTE_UE.cc	/^uint32 LTE_fdd_dl_fs_samp_buf::dlsch_decoding(float* i_data, float* q_data, uint32 len, uint32 subfr_num)$/;"	f	class:LTE_fdd_dl_fs_samp_buf
 execute	LTE_UE.cc	/^uint32 LTE_fdd_dl_fs_samp_buf::execute(float* i_data, float* q_data, uint32 len)$/;"	f	class:LTE_fdd_dl_fs_samp_buf
@@ -585,6 +585,7 @@ CPPFLAGS	Makefile	/^CPPFLAGS = -g -I.\/liblte\/hdr -I.\/hdr  -I.\/libtools\/hdr 
 DIR_enb_ue	Makefile	/^DIR_enb_ue = .$/;"	m
 DIR_liblte	Makefile	/^DIR_liblte = .\/liblte\/src$/;"	m
 DIR_libtools	Makefile	/^DIR_libtools = .\/libtools\/src$/;"	m
+ECHO	Makefile	/^ECHO      = \/bin\/echo$/;"	m
 LIBS	Makefile	/^LIBS = -lm -lstdc++ -lfftw3f -lboost_system -lpthread \\$/;"	m
 OBJS	Makefile	/^OBJS = 	BS.o 						\\$/;"	m
 OBJS_mq	Makefile	/^OBJS_mq = $(subst BS,BS_mq,$(OBJS))$/;"	m
@@ -596,16 +597,6 @@ PROG_Debug	Makefile	/^PROG_Debug = Debug$/;"	m
 SRC_enb_ue	Makefile	/^SRC_enb_ue = $( wildcard ${DIR_enb_ue}\/*.cc )$/;"	m
 SRC_liblte	Makefile	/^SRC_liblte = $( wildcard ${DIR_liblte}\/*.cc )$/;"	m
 SRC_libtools	Makefile	/^SRC_libtools = $( wildcard ${DIR_libtools}\/*.cc )$/;"	m
-ACK_or_NACK	PHICH_decode_test.cpp	/^	uint8                             ACK_or_NACK ;$/;"	v
-N_bits	PHICH_decode_test.cpp	/^    uint32            N_bits;$/;"	v
-alloc	PHICH_decode_test.cpp	/^	LIBLTE_PHY_ALLOCATION_STRUCT*     alloc = new LIBLTE_PHY_ALLOCATION_STRUCT;$/;"	v
-endl	PHICH_decode_test.cpp	/^	cout << ACK_or_NACK << endl;$/;"	v
-i_buf	PHICH_decode_test.cpp	/^	float i_buf[19200];$/;"	v
-pcfich	PHICH_decode_test.cpp	/^	LIBLTE_PHY_PCFICH_STRUCT                 pcfich;$/;"	v
-phich	PHICH_decode_test.cpp	/^    LIBLTE_PHY_PHICH_STRUCT                  phich;$/;"	v
-phy_struct	PHICH_decode_test.cpp	/^	LIBLTE_PHY_STRUCT          	   *phy_struct = new LIBLTE_PHY_STRUCT;$/;"	v
-q_buf	PHICH_decode_test.cpp	/^	float q_buf[19200];$/;"	v
-subframe	PHICH_decode_test.cpp	/^	LIBLTE_PHY_SUBFRAME_STRUCT*       subframe = new LIBLTE_PHY_SUBFRAME_STRUCT;$/;"	v
 main	UE.cpp	/^int main(int argc, char* argv[]){$/;"	f
 Alloc_Info	hdr/LTE_UE.h	/^    LIBLTE_PHY_ALLOCATION_STRUCT    Alloc_Info;$/;"	m	class:LTE_fdd_dl_fs_samp_buf
 CELL_SEARCH_STATE	hdr/LTE_UE.h	/^    CELL_SEARCH_STATE=0,$/;"	e	enum:__anon27
@@ -5642,10 +5633,3 @@ libtools_socket_wrap	libtools/src/libtools_socket_wrap.cc	/^libtools_socket_wrap
 send	libtools/src/libtools_socket_wrap.cc	/^LIBTOOLS_SOCKET_WRAP_ERROR_ENUM libtools_socket_wrap::send(std::string msg)$/;"	f	class:libtools_socket_wrap
 server_thread	libtools/src/libtools_socket_wrap.cc	/^void* libtools_socket_wrap::server_thread(void *inputs)$/;"	f	class:libtools_socket_wrap
 ~libtools_socket_wrap	libtools/src/libtools_socket_wrap.cc	/^libtools_socket_wrap::~libtools_socket_wrap()$/;"	f	class:libtools_socket_wrap
-N_out_bits	ul_test.cpp	/^    uint32 N_out_bits;$/;"	v
-alloc	ul_test.cpp	/^    LIBLTE_PHY_ALLOCATION_STRUCT *alloc = new LIBLTE_PHY_ALLOCATION_STRUCT;$/;"	v
-endl	ul_test.cpp	/^    cout<<"N_bits: "<<N_out_bits<<endl;$/;"	v
-freq_offset_u	ul_test.cpp	/^    float  freq_offset_u[1024];$/;"	v
-out_bits	ul_test.cpp	/^    uint8  out_bits[1024];$/;"	v
-subframe2	ul_test.cpp	/^    LIBLTE_PHY_SUBFRAME_STRUCT   *subframe2 = new LIBLTE_PHY_SUBFRAME_STRUCT;$/;"	v
-timing_struct	ul_test.cpp	/^    LIBLTE_PHY_COARSE_TIMING_STRUCT         timing_struct;$/;"	v

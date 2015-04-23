@@ -1399,6 +1399,12 @@ void* LTE_fdd_enb_phy::process_ul(LTE_FDD_ENB_RADIO_RX_BUF_STRUCT *rx_buf)
                         fprintf(stderr, "liblte_phy_pusch_channel_decode failed...\n");
                         phich[(ul_subframe.num + 4) % 10].present[n_group_phich][n_seq_phich] = true;
                         phich[(ul_subframe.num + 4) % 10].b[n_group_phich][n_seq_phich]       = 0;
+                        
+                        // 
+                        user_mgr->set_dl_sched(ul_schedule[ul_subframe.num].decodes.alloc[i].rnti, 
+                                               (ul_current_tti+4)%(LTE_FDD_ENB_CURRENT_TTI_MAX + 1), 
+                                               true, 
+                                               LIBLTE_PHY_CHAN_TYPE_ULSCH);
                     }
                 }
             }
