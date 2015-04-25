@@ -428,7 +428,7 @@ void LTE_fdd_enb_user_mgr::get_dl_sched(LTE_FDD_ENB_DL_SCHEDULE_MSG_STRUCT* dl_s
                     // report by uplink
                     report_tti[usr->get_c_rnti()]       = dl_sched->current_tti+4;
             
-                }else{
+                }else if(usr->alloc_chan_type == LIBLTE_PHY_CHAN_TYPE_ULSCH){
                     memcpy(&dl_sched->ul_allocations.alloc[dl_sched->ul_allocations.N_alloc], 
                            &usr->ul_msg,
                            sizeof(LIBLTE_PHY_ALLOCATION_STRUCT));
@@ -475,11 +475,27 @@ void LTE_fdd_enb_user_mgr::set_dl_sched(uint16 c_rnti, uint32 work_tti, bool fli
         usr->set_retransmission();
     }
     tti_map[c_rnti] = work_tti;
+
+    for(int i=0; i<tti_map.size(); i++)
+    {
+        cerr << i << "-th is "<< tti_map[LIBLTE_MAC_C_RNTI_START+i]<< endl;
+    }    
+
+
     user_scheduling = true;
 
     sched_mutex.unlock();
 }
 
+bool LTE_fdd_enb_user_mgr::check_dl_sched(uint32 work_tti)
+{
+    for(uint32 i=0; i<tti_map.size(); i++)
+    {
+        if(tti_map[LIBLTE_MAC_C_RNTI_START+i] == work_tti)
+            return false;
+    }
+    return true;
+}
 
 void LTE_fdd_enb_user_mgr::receive_msg(uint16 c_rnti, LTE_FDD_ENB_PUSCH_DECODE_MSG_STRUCT *pusch_decode)
 {

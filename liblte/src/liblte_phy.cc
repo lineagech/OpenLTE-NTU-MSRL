@@ -5045,7 +5045,7 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_decode_Chang(LIBLTE_PHY_STRUCT       
         if(phy_struct->N_rb_dl <= 10)
         {
             pdcch->N_symbs++;
-            fprintf(stderr, "cfi_channel_decode succeed... %d\n", pdcch->N_symbs);
+            //fprintf(stderr, "cfi_channel_decode succeed... %d\n", pdcch->N_symbs);
         
         }
         // Calculate resources, 3GPP TS 36.211 v10.1.0 section 6.8.1
@@ -5783,7 +5783,7 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_decode(LIBLTE_PHY_STRUCT             
         if(phy_struct->N_rb_dl <= 10)
         {
             pdcch->N_symbs++;
-            fprintf(stderr, "cfi_channel_decode succeed... %d\n", pdcch->N_symbs);
+            //fprintf(stderr, "cfi_channel_decode succeed... %d\n", pdcch->N_symbs);
         
         }
         // Calculate resources, 3GPP TS 36.211 v10.1.0 section 6.8.1
@@ -7284,15 +7284,16 @@ LIBLTE_ERROR_ENUM liblte_phy_find_pss_and_fine_timing_Chang(LIBLTE_PHY_STRUCT   
         {
             pss_mod_re   = &phy_struct->pss_mod_re_n3[*N_id_2][0];
             pss_mod_im   = &phy_struct->pss_mod_im_n3[*N_id_2][0];
-            *freq_offset = -15000*3; // FIXME
+            //*freq_offset = -15000*3; // FIXME
+            *freq_offset = -((phy_struct->fs)/(phy_struct->FFT_size))*3;
         }else if(-2 == idx){
             pss_mod_re   = &phy_struct->pss_mod_re_n2[*N_id_2][0];
             pss_mod_im   = &phy_struct->pss_mod_im_n2[*N_id_2][0];
-            *freq_offset = -15000*2; // FIXME
+            *freq_offset = -((phy_struct->fs)/(phy_struct->FFT_size))*2; // FIXME
         }else if(-1 == idx){
             pss_mod_re   = &phy_struct->pss_mod_re_n1[*N_id_2][0];
             pss_mod_im   = &phy_struct->pss_mod_im_n1[*N_id_2][0];
-            *freq_offset = -15000; // FIXME
+            *freq_offset = -((phy_struct->fs)/(phy_struct->FFT_size)); // FIXME
         }else if(0 == idx){
             pss_mod_re   = &phy_struct->pss_mod_re[*N_id_2][0];
             pss_mod_im   = &phy_struct->pss_mod_im[*N_id_2][0];
@@ -7300,16 +7301,16 @@ LIBLTE_ERROR_ENUM liblte_phy_find_pss_and_fine_timing_Chang(LIBLTE_PHY_STRUCT   
         }else if(1 == idx){
             pss_mod_re   = &phy_struct->pss_mod_re_p1[*N_id_2][0];
             pss_mod_im   = &phy_struct->pss_mod_im_p1[*N_id_2][0];
-            *freq_offset = 15000; // FIXME
+            *freq_offset = ((phy_struct->fs)/(phy_struct->FFT_size)); // FIXME
         }
         else if(2 == idx){
             pss_mod_re   = &phy_struct->pss_mod_re_p2[*N_id_2][0];
             pss_mod_im   = &phy_struct->pss_mod_im_p2[*N_id_2][0];
-            *freq_offset = 15000*2; // FIXME
+            *freq_offset = ((phy_struct->fs)/(phy_struct->FFT_size))*2; // FIXME
         }else if(3 == idx){
             pss_mod_re   = &phy_struct->pss_mod_re_p3[*N_id_2][0];
             pss_mod_im   = &phy_struct->pss_mod_im_p3[*N_id_2][0];
-            *freq_offset = 15000*3; // FIXME
+            *freq_offset = ((phy_struct->fs)/(phy_struct->FFT_size))*3; // FIXME
         }
           
 
@@ -7836,15 +7837,15 @@ LIBLTE_ERROR_ENUM liblte_phy_find_pss_and_fine_timing_Chang_v2(LIBLTE_PHY_STRUCT
         {
             pss_mod_re   = &phy_struct->pss_mod_re_n3[*N_id_2][0];
             pss_mod_im   = &phy_struct->pss_mod_im_n3[*N_id_2][0];
-            *freq_offset = -15000*3; // FIXME
+            *freq_offset = -((phy_struct->fs)/(phy_struct->FFT_size))*3; // FIXME
         }else if(-2 == idx){
             pss_mod_re   = &phy_struct->pss_mod_re_n2[*N_id_2][0];
             pss_mod_im   = &phy_struct->pss_mod_im_n2[*N_id_2][0];
-            *freq_offset = -15000*2; // FIXME
+            *freq_offset = -((phy_struct->fs)/(phy_struct->FFT_size))*2; // FIXME
         }else if(-1 == idx){
             pss_mod_re   = &phy_struct->pss_mod_re_n1[*N_id_2][0];
             pss_mod_im   = &phy_struct->pss_mod_im_n1[*N_id_2][0];
-            *freq_offset = -15000; // FIXME
+            *freq_offset = -((phy_struct->fs)/(phy_struct->FFT_size)); // FIXME
         }else if(0 == idx){
             pss_mod_re   = &phy_struct->pss_mod_re[*N_id_2][0];
             pss_mod_im   = &phy_struct->pss_mod_im[*N_id_2][0];
@@ -7852,16 +7853,16 @@ LIBLTE_ERROR_ENUM liblte_phy_find_pss_and_fine_timing_Chang_v2(LIBLTE_PHY_STRUCT
         }else if(1 == idx){
             pss_mod_re   = &phy_struct->pss_mod_re_p1[*N_id_2][0];
             pss_mod_im   = &phy_struct->pss_mod_im_p1[*N_id_2][0];
-            *freq_offset = 15000; // FIXME
+            *freq_offset = ((phy_struct->fs)/(phy_struct->FFT_size)); // FIXME
         }
         else if(2 == idx){
             pss_mod_re   = &phy_struct->pss_mod_re_p2[*N_id_2][0];
             pss_mod_im   = &phy_struct->pss_mod_im_p2[*N_id_2][0];
-            *freq_offset = 15000*2; // FIXME
+            *freq_offset = ((phy_struct->fs)/(phy_struct->FFT_size))*2; // FIXME
         }else if(3 == idx){
             pss_mod_re   = &phy_struct->pss_mod_re_p3[*N_id_2][0];
             pss_mod_im   = &phy_struct->pss_mod_im_p3[*N_id_2][0];
-            *freq_offset = 15000*3; // FIXME
+            *freq_offset = ((phy_struct->fs)/(phy_struct->FFT_size))*3; // FIXME
         }
           
 
@@ -16196,7 +16197,7 @@ void dci_1a_unpack(uint8                           *in_bits,
         alloc->rnti        = rnti;
     }else{
         //printf("ERROR: Not handling DCI 1As for C-RNTI\n");
-        printf("handling DCI 1As for C-RNTI by Chia-Hao Chang, 2014/12/16.\n");
+        //printf("handling DCI 1As for C-RNTI by Chia-Hao Chang, 2014/12/16.\n");
 
         // Determine if RIV uses local or distributed VRBs
         loc_or_dist = bits_2_value(&dci, 1);
@@ -16240,6 +16241,7 @@ void dci_1a_unpack(uint8                           *in_bits,
         alloc->N_codewords = 1;
         alloc->tbs         = TBS_71721[alloc->mcs][alloc->N_prb-1];
         alloc->rnti        = rnti;  
+        alloc->chan_type   = LIBLTE_PHY_CHAN_TYPE_DLSCH;
     }
 }
 

@@ -781,6 +781,12 @@ void LTE_fdd_enb_phy::handle_dl_schedule(void)
     dl_sched->ul_allocations.N_alloc = 0;
     dl_sched->current_tti            = dl_current_tti;
     user_mgr->get_dl_sched(dl_sched);
+    
+    cerr << "get_dl_sched chan ";
+    if(dl_sched->dl_allocations.N_alloc)
+        cerr << "DL " <<dl_sched->dl_allocations.alloc[0].chan_type<<endl;
+    if(dl_sched->ul_allocations.N_alloc)
+        cerr << "UL " <<dl_sched->ul_allocations.alloc[0].chan_type<<endl;
 
     boost::mutex::scoped_lock lock(dl_sched_mutex);
 
@@ -1335,26 +1341,32 @@ void* LTE_fdd_enb_phy::process_ul(LTE_FDD_ENB_RADIO_RX_BUF_STRUCT *rx_buf)
                         if((ul_current_tti+4)%10 == 5)
                         {
                             user_mgr->set_dl_sched(ul_schedule[ul_subframe.num].decodes.alloc[i].rnti, 
-                                                   (ul_current_tti+5), 
+                                                   (ul_current_tti+5)%(LTE_FDD_ENB_CURRENT_TTI_MAX + 1), 
                                                    false, 
                                                    LIBLTE_PHY_CHAN_TYPE_DLSCH);
                         }else{
                             user_mgr->set_dl_sched(ul_schedule[ul_subframe.num].decodes.alloc[i].rnti, 
-                                                   (ul_current_tti+4), 
+                                                   (ul_current_tti+4)%(LTE_FDD_ENB_CURRENT_TTI_MAX + 1), 
                                                    false, 
                                                    LIBLTE_PHY_CHAN_TYPE_DLSCH);
                         }
                     }else{
                         cerr << "ACK from "<< ul_schedule[ul_subframe.num].decodes.alloc[i].rnti << endl;
-                        if((ul_current_tti+4)%10 == 5)
+                        if((ul_current_tti+4)%10 == 5 || (ul_current_tti+4)%10 == 0)
                         {
+                            uint32 offset = 5;
+                            while(!user_mgr->check_dl_sched(ul_current_tti+offset))
+                            {
+                                offset++;
+                            }
+                            cerr << "offset "<< offset<<endl;
                             user_mgr->set_dl_sched(ul_schedule[ul_subframe.num].decodes.alloc[i].rnti, 
-                                                   (ul_current_tti+5), 
-                                                   false, 
+                                                   (ul_current_tti+offset)%(LTE_FDD_ENB_CURRENT_TTI_MAX + 1), 
+                                                   true, 
                                                    LIBLTE_PHY_CHAN_TYPE_DLSCH);
                         }else{
                             user_mgr->set_dl_sched(ul_schedule[ul_subframe.num].decodes.alloc[i].rnti, 
-                                                   (ul_current_tti+4), 
+                                                   (ul_current_tti+4)%(LTE_FDD_ENB_CURRENT_TTI_MAX + 1), 
                                                    true, 
                                                    LIBLTE_PHY_CHAN_TYPE_DLSCH);
                         }

@@ -96,6 +96,7 @@ public:
     void set_dl_sched(uint16 c_rnti, uint32 work_tti, bool flip_ndi, LIBLTE_PHY_CHAN_TYPE_ENUM tran_chan);
     void get_dl_sched(LTE_FDD_ENB_DL_SCHEDULE_MSG_STRUCT* dl_sched);
     void get_ul_sched(LTE_FDD_ENB_UL_SCHEDULE_MSG_STRUCT* ul_sched);
+    bool check_dl_sched(uint32 work_tti);
 
     void set_tti_map(uint16 c_rnti, uint32 sched_tti);
     std::map<uint16, uint32> tti_map;

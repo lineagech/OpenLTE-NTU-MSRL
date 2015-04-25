@@ -52,6 +52,8 @@ using namespace std;
                               STATIC VARIABLES
 *******************************************************************************/
 static float ZERO_SIGNAL[1920] = {0.0};
+static float TX_SIGNAL_RE[1920] = {0.0};
+static float TX_SIGNAL_IM[1920] = {0.0};
 
 /*******************************************************************************
                               TYPEDEFS
@@ -134,15 +136,16 @@ public:
     // Message Queue
     void* recv_from_mq(void* inputs);
 
+    // Uplink mutex
+    void* process_ul_mq(void);
+
     // Start/Stop
     boost::mutex start_mutex;
     bool         started;
 
     void init();
-    void init_usrp(double rate, 
-                   double freq, 
-                   double gain, 
-                   bool clock);
+    void init_usrp(double rate_0, double freq_0, double gain_0, bool clock_0,
+                   double rate_1, double freq_1, double gain_1, bool clock_1 ) ;
 
     // buffer
     std::vector<std::complex<float> >   send_buff; 
@@ -171,7 +174,8 @@ private:
     Radio();
     ~Radio();
     
-    uhd::usrp::multi_usrp::sptr         usrp;
+    uhd::usrp::multi_usrp::sptr         usrp_0;
+    uhd::usrp::multi_usrp::sptr         usrp_1;
     uhd::tx_streamer::sptr              tx_stream;
     uhd::rx_streamer::sptr              rx_stream;
 
@@ -292,6 +296,10 @@ public:
     HARQ_process                                harq_proc[8];
     HARQ_process                                ul_harq_proc[8];
     LIBLTE_PHY_PDCCH_STRUCT                     pdcch;
+
+
+
+    boost::mutex    ul_tx_mutex;
     
 private:
     //friend LTE_FDD_DL_FS_API LTE_fdd_dl_fs_samp_buf_sptr LTE_fdd_dl_fs_make_samp_buf(size_t in_size_val);
