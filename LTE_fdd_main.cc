@@ -13,7 +13,7 @@ class LTE_fdd_enb_phy;
 /********************************************/
 
 boost::mutex phy_instance_mutex;
-LTE_File lte_file_OFDM_symbol("OFDM_symbol.dat");
+//LTE_File lte_file_OFDM_symbol("OFDM_symbol.dat");
 
 LTE_fdd_enb_phy* LTE_fdd_enb_phy::instance = NULL;
 
@@ -783,10 +783,15 @@ void LTE_fdd_enb_phy::handle_dl_schedule(void)
     user_mgr->get_dl_sched(dl_sched);
     
     cerr << "get_dl_sched chan ";
-    if(dl_sched->dl_allocations.N_alloc)
-        cerr << "DL " <<dl_sched->dl_allocations.alloc[0].chan_type<<endl;
-    if(dl_sched->ul_allocations.N_alloc)
-        cerr << "UL " <<dl_sched->ul_allocations.alloc[0].chan_type<<endl;
+    if(dl_sched->dl_allocations.N_alloc){
+        cerr << "DL @ "<< dl_current_tti <<" ... "<<dl_sched->dl_allocations.alloc[0].chan_type<<endl;
+        //getchar();
+    }
+    if(dl_sched->ul_allocations.N_alloc){
+        cerr << "UL @ "<< dl_current_tti <<" ... "<<dl_sched->ul_allocations.alloc[0].chan_type<<endl;
+        //getchar();
+    }
+
 
     boost::mutex::scoped_lock lock(dl_sched_mutex);
 
@@ -865,28 +870,38 @@ void* LTE_fdd_enb_phy::process_dl(LTE_FDD_ENB_RADIO_TX_BUF_STRUCT *tx_buf)
 
     srand(time(NULL));
     // Initialize the output to all zeros
-    for(p=0; p<sys_info.N_ant; p++)
-    {
-        for(i=0; i<14; i++)
-        {
-            for(j=0; j<LIBLTE_PHY_N_RB_DL_20MHZ*LIBLTE_PHY_N_SC_RB_DL_NORMAL_CP; j++)
-            {
-                //dl_subframe.tx_symb_re[p][i][j] = 0;
-                //dl_subframe.tx_symb_im[p][i][j] = 0;
-                rand_num = rand()%2;
-                if(rand_num == 0)
-                   dl_subframe.tx_symb_re[p][i][j] = 1/sqrt(2);
-                else
-                   dl_subframe.tx_symb_re[p][i][j] = -1/sqrt(2);
-                
-                rand_num = rand()%2;
-                if(rand_num == 0)
-                   dl_subframe.tx_symb_im[p][i][j] = 1/sqrt(2);
-                else
-                   dl_subframe.tx_symb_im[p][i][j] = -1/sqrt(2);
-            }
-        }
-    }
+    // for(p=0; p<sys_info.N_ant; p++)
+    // {
+    //     #pragma omp parallel for
+    //     for(i=0; i<14; i++)
+    //     {
+    //         #pragma omp parallel for
+    //         for(j=0; j<LIBLTE_PHY_N_RB_DL_1_4MHZ*LIBLTE_PHY_N_SC_RB_DL_NORMAL_CP; j++)
+    //         {
+    //             //dl_subframe.tx_symb_re[p][i][j] = 0;
+    //             //dl_subframe.tx_symb_im[p][i][j] = 0;
+    //             #pragma omp parallel sections
+    //             {
+    //                 #pragma omp section
+    //                 {
+    //                     rand_num = rand()%2;
+    //                     if(rand_num == 0)
+    //                        dl_subframe.tx_symb_re[p][i][j] = 1/sqrt(2);
+    //                     else
+    //                        dl_subframe.tx_symb_re[p][i][j] = -1/sqrt(2);
+    //                 }
+    //                 #pragma omp section
+    //                 {
+    //                     rand_num = rand()%2;
+    //                     if(rand_num == 0)
+    //                        dl_subframe.tx_symb_im[p][i][j] = 1/sqrt(2);
+    //                     else
+    //                        dl_subframe.tx_symb_im[p][i][j] = -1/sqrt(2);
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
     dl_subframe.num = subfn;
 
     // Handle PSS and SSS
@@ -1055,6 +1070,27 @@ void* LTE_fdd_enb_phy::process_dl(LTE_FDD_ENB_RADIO_TX_BUF_STRUCT *tx_buf)
 
     // Update current TTI
     dl_current_tti = (dl_current_tti + 1) % (LTE_FDD_ENB_CURRENT_TTI_MAX + 1);
+
+    // Test
+
+    LTE_fdd_enb_radio* radio = LTE_fdd_enb_radio::get_instance();
+    //radio->send(tx_buf);
+    uhd::tx_metadata_t      metadata;
+    metadata.time_spec      = radio->next_tx_ts;
+    metadata.has_time_spec  = true;
+    metadata.start_of_burst = false;
+    metadata.end_of_burst   = false;
+    #pragma omp parallel for
+    for (int i = 0; i < 1920; ++i)
+    {
+        radio->tx_buf[i] = gr_complex(tx_buf->i_buf[0][i]/50.0, tx_buf->q_buf[0][i]/50.0);
+    }
+    radio->tx_stream->send(radio->tx_buf, 1920, metadata);
+    radio->next_tx_ts += uhd::time_spec_t::from_ticks(1920, radio->get_sample_rate());
+    cerr << ANSI_COLOR_RED<<"\tBS Send one subframe"<<endl;
+    cerr << ANSI_COLOR_RESET;
+
+    
 
     // // Test //
     // cerr<<"--------- My Test ---------"<<endl;
@@ -1243,7 +1279,7 @@ void* LTE_fdd_enb_phy::process_ul(LTE_FDD_ENB_RADIO_RX_BUF_STRUCT *rx_buf)
     // Check the received current_tti
 
     // Fixed by Chia-Hao Chang
-    ul_current_tti = rx_buf->current_tti;
+    //ul_current_tti = rx_buf->current_tti;
 
     // if(rx_buf->current_tti != ul_current_tti)
     // {
@@ -1289,7 +1325,43 @@ void* LTE_fdd_enb_phy::process_ul(LTE_FDD_ENB_RADIO_RX_BUF_STRUCT *rx_buf)
     //     }
     // }
 
+    // Test 
+    //LTE_File read_noise("noise.dat", READ);
+    //read_noise.LTE_File_Read(rx_buf->i_buf, rx_buf->q_buf, 1920);
+    //liblte_phy_get_ul_subframe(phy_struct,
+    //                           rx_buf->i_buf,
+    //                           rx_buf->q_buf,
+    //                           &ul_subframe);
+    //liblte_phy_pucch_formats_1_1a_1b_decode(phy_struct,
+    //                                        1, // one-bit
+    //                                        sys_info.N_ant,
+    //                                        1, //delta_PUCCH_shift, fixed
+    //                                        sys_info.N_id_cell,
+    //                                        0,
+    //                                        &p1_re_0,
+    //                                        &p1_im_0,
+    //                                        &n1_re_0,
+    //                                        &n1_im_0,
+    //                                        &ul_subframe);
+    //liblte_phy_pucch_formats_1_1a_1b_decode(phy_struct,
+    //                                        1, // one-bit 
+    //                                        sys_info.N_ant,
+    //                                        1, //delta_PUCCH_shift, fixed
+    //                                       sys_info.N_id_cell,
+    //                                        1,
+    //                                        &p1_re_1,
+    //                                        &p1_im_1,
+    //                                        &n1_re_1,
+    //                                        &n1_im_1,
+    //                                       &ul_subframe);
+    //  theoretical value 96+j0, find which has min distance
+    //float dist_to_nack = (p1_re_0+p1_re_1-96)*(p1_re_0+p1_re_1-96)+(p1_im_0+p1_im_1)*(p1_im_0+p1_im_1);
+    //float dist_to_ack  = (n1_re_0+n1_re_1-96)*(n1_re_0+n1_re_1-96)+(n1_im_0+n1_im_1)*(n1_im_0+n1_im_1);
+
+
+    //
     // Handle PUSCH & PUCCH
+    
     ul_sched_mutex.lock();
     if(0 != ul_schedule[ul_subframe.num].decodes.N_alloc)
     {
@@ -1304,6 +1376,7 @@ void* LTE_fdd_enb_phy::process_ul(LTE_FDD_ENB_RADIO_RX_BUF_STRUCT *rx_buf)
             {
                 // Handle DLSCH's PUCCH HARQ report
                 // Implemented by Chia-Hao Chang
+                auto start_time = chrono::high_resolution_clock::now();
                 if(ul_schedule[ul_subframe.num].decodes.alloc[i].chan_type == LIBLTE_PHY_CHAN_TYPE_DLSCH)
                 {
                     liblte_phy_pucch_formats_1_1a_1b_decode(phy_struct,
@@ -1332,16 +1405,22 @@ void* LTE_fdd_enb_phy::process_ul(LTE_FDD_ENB_RADIO_RX_BUF_STRUCT *rx_buf)
                     float dist_to_nack = (p1_re_0+p1_re_1-96)*(p1_re_0+p1_re_1-96)+(p1_im_0+p1_im_1)*(p1_im_0+p1_im_1);
                     float dist_to_ack  = (n1_re_0+n1_re_1-96)*(n1_re_0+n1_re_1-96)+(n1_im_0+n1_im_1)*(n1_im_0+n1_im_1);
                     
+
                     // Need to determine new transmission or retransmission
                     //user_mgr->find_ul_user(ul_current_tti%10, &c_rnti);
-
-                    if(dist_to_nack < dist_to_ack) // NACK
+                    float pucch_threshold = 2304.0;
+                    if(dist_to_nack < dist_to_ack && dist_to_nack<pucch_threshold) // NACK
                     {
                         cerr << "NACK from "<< ul_schedule[ul_subframe.num].decodes.alloc[i].rnti << endl;
-                        if((ul_current_tti+4)%10 == 5)
-                        {
+                        if((ul_current_tti+4)%10 == 5 || (ul_current_tti+4)%10 == 0)
+                        {   
+                            uint32 offset = 5;
+                            while(!user_mgr->check_dl_sched(ul_current_tti+offset))
+                            {
+                                offset++;
+                            }
                             user_mgr->set_dl_sched(ul_schedule[ul_subframe.num].decodes.alloc[i].rnti, 
-                                                   (ul_current_tti+5)%(LTE_FDD_ENB_CURRENT_TTI_MAX + 1), 
+                                                   (ul_current_tti+offset)%(LTE_FDD_ENB_CURRENT_TTI_MAX + 1), 
                                                    false, 
                                                    LIBLTE_PHY_CHAN_TYPE_DLSCH);
                         }else{
@@ -1350,7 +1429,7 @@ void* LTE_fdd_enb_phy::process_ul(LTE_FDD_ENB_RADIO_RX_BUF_STRUCT *rx_buf)
                                                    false, 
                                                    LIBLTE_PHY_CHAN_TYPE_DLSCH);
                         }
-                    }else{
+                    }else if(dist_to_ack < dist_to_nack && dist_to_ack<pucch_threshold){
                         cerr << "ACK from "<< ul_schedule[ul_subframe.num].decodes.alloc[i].rnti << endl;
                         if((ul_current_tti+4)%10 == 5 || (ul_current_tti+4)%10 == 0)
                         {
@@ -1370,8 +1449,30 @@ void* LTE_fdd_enb_phy::process_ul(LTE_FDD_ENB_RADIO_RX_BUF_STRUCT *rx_buf)
                                                    true, 
                                                    LIBLTE_PHY_CHAN_TYPE_DLSCH);
                         }
-                    }   
+                    }else{
+                        cerr << "No ACK/NACK in PUCCH" << endl;
+                        if((ul_current_tti+4)%10 == 5 || (ul_current_tti+4)%10 == 0)
+                        {
+                            uint32 offset = 5;
+                            while(!user_mgr->check_dl_sched(ul_current_tti+offset))
+                            {
+                                offset++;
+                            }
+                            cerr << "offset "<< offset<<endl;
+                            user_mgr->set_dl_sched(ul_schedule[ul_subframe.num].decodes.alloc[i].rnti, 
+                                                   (ul_current_tti+offset)%(LTE_FDD_ENB_CURRENT_TTI_MAX + 1), 
+                                                   true, 
+                                                   LIBLTE_PHY_CHAN_TYPE_DLSCH);
+                        }else{
+                            user_mgr->set_dl_sched(ul_schedule[ul_subframe.num].decodes.alloc[i].rnti, 
+                                                   (ul_current_tti+4)%(LTE_FDD_ENB_CURRENT_TTI_MAX + 1), 
+                                                   true, 
+                                                   LIBLTE_PHY_CHAN_TYPE_DLSCH);
+                        }
+                    }
 
+                    cerr<< ANSI_COLOR_BLUE << "\tPUCCH Decoding total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
+                    cerr<< ANSI_COLOR_RESET;   
                 }else{
                     // Determine PHICH indecies
                     I_prb_ra      = ul_schedule[ul_subframe.num].decodes.alloc[i].prb[0][0];
@@ -1387,7 +1488,7 @@ void* LTE_fdd_enb_phy::process_ul(LTE_FDD_ENB_RADIO_RX_BUF_STRUCT *rx_buf)
                                                                          pusch_decode.msg.msg,
                                                                          &pusch_decode.msg.N_bits))
                     {
-                        fprintf(stderr, "liblte_phy_pusch_channel_decode succeed...\n");
+                        fprintf(stderr, "\tPUSCH Decoding succeed...\n");
                         pusch_decode.current_tti = ul_current_tti;
                         pusch_decode.rnti        = ul_schedule[ul_subframe.num].decodes.alloc[i].rnti;
 
@@ -1401,23 +1502,45 @@ void* LTE_fdd_enb_phy::process_ul(LTE_FDD_ENB_RADIO_RX_BUF_STRUCT *rx_buf)
                         user_mgr->receive_msg(ul_schedule[ul_subframe.num].decodes.alloc[i].rnti, &pusch_decode);
 
                         // Update Next Scheduling
-                        user_mgr->set_dl_sched(ul_schedule[ul_subframe.num].decodes.alloc[i].rnti, 
-                                               (ul_current_tti+8)%(LTE_FDD_ENB_CURRENT_TTI_MAX + 1), // if ACK
-                                               true, 
-                                               LIBLTE_PHY_CHAN_TYPE_ULSCH);
+                        if((ul_current_tti+8)%10 == 5 || (ul_current_tti+8)%10 == 0)
+                        {
+                            user_mgr->set_dl_sched(ul_schedule[ul_subframe.num].decodes.alloc[i].rnti, 
+                                                   (ul_current_tti+9)%(LTE_FDD_ENB_CURRENT_TTI_MAX + 1), // if ACK
+                                                   true, 
+                                                   LIBLTE_PHY_CHAN_TYPE_ULSCH);
+                        }else{    
+                            user_mgr->set_dl_sched(ul_schedule[ul_subframe.num].decodes.alloc[i].rnti, 
+                                                   (ul_current_tti+8)%(LTE_FDD_ENB_CURRENT_TTI_MAX + 1), // if ACK
+                                                   true, 
+                                                   LIBLTE_PHY_CHAN_TYPE_ULSCH);
+                        }
 
                     }else{
                         // Add NACK to PHICH
-                        fprintf(stderr, "liblte_phy_pusch_channel_decode failed...\n");
+                        fprintf(stderr, "\tPUSCH Decoding failed...\n");
                         phich[(ul_subframe.num + 4) % 10].present[n_group_phich][n_seq_phich] = true;
                         phich[(ul_subframe.num + 4) % 10].b[n_group_phich][n_seq_phich]       = 0;
                         
                         // 
+
+                        // Re-Scheduling
                         user_mgr->set_dl_sched(ul_schedule[ul_subframe.num].decodes.alloc[i].rnti, 
                                                (ul_current_tti+4)%(LTE_FDD_ENB_CURRENT_TTI_MAX + 1), 
                                                true, 
                                                LIBLTE_PHY_CHAN_TYPE_ULSCH);
+                        if((ul_current_tti+4)%10 == 5 || (ul_current_tti+4)%10 == 0)
+                        {
+                            LTE_FDD_ENB_DL_SCHEDULE_MSG_STRUCT *dl_sched = new LTE_FDD_ENB_DL_SCHEDULE_MSG_STRUCT;
+                            dl_sched->dl_allocations.N_alloc = 0;
+                            dl_sched->ul_allocations.N_alloc = 0;
+                            dl_sched->current_tti            = (ul_current_tti+4);
+                            user_mgr->get_dl_sched(dl_sched);
+                            memcpy(&ul_schedule[(dl_sched->current_tti+4)%10].decodes, &dl_sched->ul_allocations, sizeof(LIBLTE_PHY_PDCCH_STRUCT));
+                        }
                     }
+
+                    cerr<< ANSI_COLOR_BLUE << "\tPUSCH Decoding total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
+                    cerr<< ANSI_COLOR_RESET;
                 }
             }
         }

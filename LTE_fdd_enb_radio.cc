@@ -156,46 +156,73 @@ LTE_FDD_ENB_ERROR_ENUM LTE_fdd_enb_radio::start(void)
     {
         if(0 != selected_radio_idx)
         {
+            cerr << "Radio Start... "<< endl;
             started = true;
             start_mutex.unlock();
             try
             {
                 // Get the DL and UL EARFCNs
-                cnfg_db->get_param(LTE_FDD_ENB_PARAM_DL_EARFCN, dl_earfcn);
-                cnfg_db->get_param(LTE_FDD_ENB_PARAM_UL_EARFCN, ul_earfcn);
+                //cnfg_db->get_param(LTE_FDD_ENB_PARAM_DL_EARFCN, dl_earfcn);
+                //cnfg_db->get_param(LTE_FDD_ENB_PARAM_UL_EARFCN, ul_earfcn);
 
                 // Get the number of TX antennas
-                cnfg_db->get_param(LTE_FDD_ENB_PARAM_N_ANT, N_ant);
+                //cnfg_db->get_param(LTE_FDD_ENB_PARAM_N_ANT, N_ant);
 
                 // Setup the USRP
-                usrp = uhd::usrp::multi_usrp::make(devs[selected_radio_idx-1]);
-                usrp->set_clock_source(clock_source);
-                usrp->set_master_clock_rate(1e8); // 100 MHz
-               
-                if(2.0 >= fabs(usrp->get_master_clock_rate() - 100000000.0))
+                for(int idx=0; idx<devs.size(); idx++)
+                    cerr<<devs[idx].to_pp_string()<<endl;
+
+                //string addr_0 = "addr=192.168.12.2";
+                usrp_0 = uhd::usrp::multi_usrp::make(devs[0]); // RX
+                usrp_0->set_clock_source(clock_source);
+                usrp_0->set_time_source("gpsdo");
+                usrp_0->set_master_clock_rate(1e8); // 100 MHz
+
+                //string addr_1 = "addr=192.168.12.3";
+                usrp_1 = uhd::usrp::multi_usrp::make(devs[1]); // TX
+                usrp_1->set_clock_source("mimo");
+                usrp_1->set_time_source("mimo");
+                usrp_1->set_master_clock_rate(1e8); // 100 MHz
+                
+                cerr << "get_master_clock_rate " <<usrp_0->get_master_clock_rate()<<endl;
+
+                if(2.0 >= fabs(usrp_0->get_master_clock_rate() - 100000000.0))
                 {
-                    usrp->set_tx_rate(get_sample_rate());
-                    usrp->set_rx_rate(get_sample_rate());
+                    usrp_0->set_tx_rate(get_sample_rate());
+                    usrp_0->set_rx_rate(get_sample_rate());
+                    
                     //usrp->set_tx_freq((double)liblte_interface_dl_earfcn_to_frequency(dl_earfcn));
                     //usrp->set_rx_freq((double)liblte_interface_ul_earfcn_to_frequency(ul_earfcn));
                     
-                    usrp->set_tx_freq(2.0*1e9); // downlink 2G Hz
-                    usrp->set_rx_freq(2.5*1e9); // uplink  2.5G Hz
-                    usrp->set_tx_gain(tx_gain);
-                    usrp->set_rx_gain(rx_gain);
+                    usrp_0->set_tx_freq(2.5*1e9); // Uplink 2.5G Hz
+                    usrp_0->set_rx_freq(2.5*1e9); 
+                    usrp_0->set_tx_gain(tx_gain);
+                    usrp_0->set_rx_gain(rx_gain);
 
                     // Setup the TX and RX streams
-                    tx_stream  = usrp->get_tx_stream(stream_args);
-                    rx_stream  = usrp->get_rx_stream(stream_args);
-                    //N_tx_samps = tx_stream->get_max_num_samps();
-                    //N_rx_samps = rx_stream->get_max_num_samps();
-                    //if(N_rx_samps > LIBLTE_PHY_N_SAMPS_PER_SUBFR_1_92MHZ &&
-                    //   N_tx_samps > LIBLTE_PHY_N_SAMPS_PER_SUBFR_1_92MHZ)
-                    //{
+                    rx_stream  = usrp_0->get_rx_stream(stream_args);
+
+
+                    usrp_1->set_tx_rate(get_sample_rate());
+                    usrp_1->set_rx_rate(get_sample_rate());
+                    //usrp->set_tx_freq((double)liblte_interface_dl_earfcn_to_frequency(dl_earfcn));
+                    //usrp->set_rx_freq((double)liblte_interface_ul_earfcn_to_frequency(ul_earfcn));
+                    
+                    usrp_1->set_tx_freq(2.0*1e9); // Downlink 2G Hz
+                    usrp_1->set_rx_freq(2.0*1e9); 
+                    usrp_1->set_tx_gain(tx_gain);
+                    usrp_1->set_rx_gain(rx_gain);
+
+                    // Setup the TX and RX streams
+                    tx_stream  = usrp_1->get_tx_stream(stream_args); 
+
+                    //
+                    
                     N_rx_samps = LIBLTE_PHY_N_SAMPS_PER_SUBFR_1_92MHZ;
                     N_tx_samps = LIBLTE_PHY_N_SAMPS_PER_SUBFR_1_92MHZ;
 
                     // Kick off the receiving thread
+                    cerr << " radio_thread_func " << endl;
                     pthread_create(&radio_thread, NULL, &radio_thread_func, NULL);
 
                     err = LTE_FDD_ENB_ERROR_NONE;
@@ -243,7 +270,13 @@ LTE_FDD_ENB_ERROR_ENUM LTE_fdd_enb_radio::stop(void)
     }
     return(err);
 }
-
+void LTE_fdd_enb_radio::wait_radio_thread(void)
+{
+    if(started)
+    {
+        pthread_join(radio_thread, NULL);
+    }
+}
 /****************************/
 /*    External Interface    */
 /****************************/
@@ -326,7 +359,7 @@ uint32 LTE_fdd_enb_radio::get_tx_gain(void)
         {
             gain = tx_gain;
         }else{
-            gain = (uint32)usrp->get_tx_gain();
+            gain = (uint32)usrp_0->get_tx_gain();
         }
     }
     return(gain);
@@ -340,7 +373,7 @@ LTE_FDD_ENB_ERROR_ENUM LTE_fdd_enb_radio::set_tx_gain(uint32 gain)
     {
         if(0 != selected_radio_idx)
         {
-            usrp->set_tx_gain(gain);
+            usrp_0->set_tx_gain(gain);
         }
     }
 
@@ -359,7 +392,7 @@ uint32 LTE_fdd_enb_radio::get_rx_gain(void)
         {
             gain = rx_gain;
         }else{
-            gain = (uint32)usrp->get_rx_gain();
+            gain = (uint32)usrp_0->get_rx_gain();
         }
     }
     
@@ -374,7 +407,7 @@ LTE_FDD_ENB_ERROR_ENUM LTE_fdd_enb_radio::set_rx_gain(uint32 gain)
     {
         if(0 != selected_radio_idx)
         {
-            usrp->set_rx_gain(gain);
+            usrp_0->set_rx_gain(gain);
         }
     }
 
@@ -393,7 +426,7 @@ std::string LTE_fdd_enb_radio::get_clock_source(void)
         {
             source = clock_source;
         }else{
-            source = usrp->get_clock_source(0);
+            source = usrp_0->get_clock_source(0);
         }
     }
     
@@ -422,6 +455,7 @@ uint32 LTE_fdd_enb_radio::get_sample_rate(void)
     LTE_fdd_enb_cnfg_db       *cnfg_db = LTE_fdd_enb_cnfg_db::get_instance();
     int64                      dl_bw;
 
+    /*
     if(!started)
     {
         cnfg_db->get_param(LTE_FDD_ENB_PARAM_DL_BW, dl_bw);
@@ -455,9 +489,16 @@ uint32 LTE_fdd_enb_radio::get_sample_rate(void)
             break;
         }
     }
-
+    */
     return(fs);
 }
+
+void LTE_fdd_enb_radio::set_sample_rate(uint32 _fs)
+{
+    fs = _fs;        
+}
+
+
 void LTE_fdd_enb_radio::set_earfcns(int64 dl_earfcn,
                                     int64 ul_earfcn)
 {
@@ -465,8 +506,8 @@ void LTE_fdd_enb_radio::set_earfcns(int64 dl_earfcn,
     if(started &&
        0 != selected_radio_idx)
     {
-        usrp->set_tx_freq((double)liblte_interface_dl_earfcn_to_frequency(dl_earfcn));
-        usrp->set_rx_freq((double)liblte_interface_ul_earfcn_to_frequency(ul_earfcn));
+        usrp_0->set_tx_freq((double)liblte_interface_dl_earfcn_to_frequency(dl_earfcn));
+        usrp_0->set_rx_freq((double)liblte_interface_ul_earfcn_to_frequency(ul_earfcn));
     }
     
 }
@@ -489,25 +530,26 @@ void LTE_fdd_enb_radio::send(LTE_FDD_ENB_RADIO_TX_BUF_STRUCT *buf)
         metadata.start_of_burst = false;
         metadata.end_of_burst   = false;
 
-        // Check current_tti
-        if(buf->current_tti != next_tx_current_tti)
-        {
-            if(buf->current_tti > next_tx_current_tti)
-            {
-                N_skipped_subfrs = buf->current_tti - next_tx_current_tti;
-            }else{
-                N_skipped_subfrs = (buf->current_tti + LTE_FDD_ENB_CURRENT_TTI_MAX + 1) - next_tx_current_tti;
-            }
+        // Check current_tti 
+        // if(buf->current_tti != next_tx_current_tti)
+        // {
+        //     if(buf->current_tti > next_tx_current_tti)
+        //     {
+        //         N_skipped_subfrs = buf->current_tti - next_tx_current_tti;
+        //     }else{
+        //         N_skipped_subfrs = (buf->current_tti + LTE_FDD_ENB_CURRENT_TTI_MAX + 1) - next_tx_current_tti;
+        //     }
 
-            next_tx_ts          += uhd::time_spec_t::from_ticks(N_skipped_subfrs*N_samps_per_subfr, fs);
-            next_tx_current_tti  = (buf->current_tti + 1) % (LTE_FDD_ENB_CURRENT_TTI_MAX + 1);
-        }else{
-            next_tx_current_tti = (next_tx_current_tti + 1) % (LTE_FDD_ENB_CURRENT_TTI_MAX + 1);
-        }
+        //     next_tx_ts          += uhd::time_spec_t::from_ticks(N_skipped_subfrs*N_samps_per_subfr, fs);
+        //     next_tx_current_tti  = (buf->current_tti + 1) % (LTE_FDD_ENB_CURRENT_TTI_MAX + 1);
+        // }else{
+        //     next_tx_current_tti = (next_tx_current_tti + 1) % (LTE_FDD_ENB_CURRENT_TTI_MAX + 1);
+        // }
 
         while(samps_to_send > N_tx_samps)
         {
             metadata.time_spec = next_tx_ts;
+            #pragma omp parallel for
             for(i=0; i<N_tx_samps; i++)
             {
                 tx_buf[i] = gr_complex(buf->i_buf[0][idx+i]/50.0, buf->q_buf[0][idx+i]/50.0);
@@ -534,6 +576,7 @@ void LTE_fdd_enb_radio::send(LTE_FDD_ENB_RADIO_TX_BUF_STRUCT *buf)
         if(0 != samps_to_send)
         {
             metadata.time_spec = next_tx_ts;
+            #pragma omp parallel for
             for(i=0; i<samps_to_send; i++)
             {
                 tx_buf[i] = gr_complex(buf->i_buf[0][idx+i]/50.0, buf->q_buf[0][idx+i]/50.0);
@@ -554,6 +597,8 @@ void LTE_fdd_enb_radio::send(LTE_FDD_ENB_RADIO_TX_BUF_STRUCT *buf)
 #endif
             tx_stream->send(tx_buf, samps_to_send, metadata);
             next_tx_ts += uhd::time_spec_t::from_ticks(samps_to_send, fs);
+            cerr << ANSI_COLOR_RED<<"\tBS Send one subframe"<<endl;
+            cerr << ANSI_COLOR_RESET;
         }
     }
     
@@ -593,6 +638,34 @@ void* LTE_fdd_enb_radio::radio_thread_func(void *inputs)
     bool                             init_needed    = true;
     bool                             rx_synced      = false;
 
+    srand(time(NULL));
+    #pragma omp parallel for
+    for(int i=0; i<14; i++)
+    {
+        #pragma omp parallel for
+        for(int j=0; j<LIBLTE_PHY_N_RB_DL_1_4MHZ*LIBLTE_PHY_N_SC_RB_DL_NORMAL_CP; j++)
+        {
+            #pragma omp parallel sections
+            {
+                #pragma omp section
+                {
+                    int rand_num = rand()%2;
+                    if(rand_num == 0)
+                       phy->dl_subframe.tx_symb_re[0][i][j] = 1/sqrt(2);
+                    else
+                       phy->dl_subframe.tx_symb_re[0][i][j] = -1/sqrt(2);
+                }
+                #pragma omp section
+                {
+                    int rand_num = rand()%2;
+                    if(rand_num == 0)
+                       phy->dl_subframe.tx_symb_im[0][i][j] = 1/sqrt(2);
+                    else
+                       phy->dl_subframe.tx_symb_im[0][i][j] = -1/sqrt(2);
+                }
+            }
+        }
+    }
     // Set highest priority
     priority.sched_priority = 99;
     pthread_setschedparam(radio->radio_thread, SCHED_FIFO, &priority);
@@ -620,20 +693,23 @@ void* LTE_fdd_enb_radio::radio_thread_func(void *inputs)
             if(init_needed)
             {
                 // Setup time specs
-                radio->next_tx_ts  = uhd::time_spec_t::from_ticks(samp_rate, samp_rate); // 1 second to make sure everything is setup
+                radio->next_tx_ts  = uhd::time_spec_t::from_ticks(2*samp_rate, samp_rate); // 1 second to make sure everything is setup
                 next_rx_ts         = radio->next_tx_ts;
                 next_rx_ts        -= uhd::time_spec_t::from_ticks(radio->N_samps_per_subfr*2, samp_rate); // Retard RX by 2 subframes
                 next_rx_subfr_ts   = next_rx_ts;
 
                 // Reset USRP time
-                radio->usrp->set_time_now(uhd::time_spec_t::from_ticks(0, samp_rate));
+                radio->usrp_0->set_time_now(uhd::time_spec_t::from_ticks(0, samp_rate));
 
                 // Signal PHY to generate first subframe
+                auto start_time = chrono::high_resolution_clock::now();
                 phy->radio_interface(&tx_radio_buf[1]);
+                cerr<< ANSI_COLOR_BLUE << "\tSend One subframe : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
+                cerr<< ANSI_COLOR_RESET;
 
                 // Start streaming
                 cmd.stream_now = true;
-                radio->usrp->issue_stream_cmd(cmd);
+                radio->usrp_0->issue_stream_cmd(cmd);
 
                 init_needed = false;
             }

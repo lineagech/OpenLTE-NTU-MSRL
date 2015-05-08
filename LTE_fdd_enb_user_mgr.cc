@@ -489,10 +489,17 @@ void LTE_fdd_enb_user_mgr::set_dl_sched(uint16 c_rnti, uint32 work_tti, bool fli
 
 bool LTE_fdd_enb_user_mgr::check_dl_sched(uint32 work_tti)
 {
+    LTE_fdd_enb_user* usr;
     for(uint32 i=0; i<tti_map.size(); i++)
     {
-        if(tti_map[LIBLTE_MAC_C_RNTI_START+i] == work_tti)
+        find_user(LIBLTE_MAC_C_RNTI_START+i, &usr);
+        if(tti_map[LIBLTE_MAC_C_RNTI_START+i] == work_tti){
             return false;
+        }
+        if((tti_map[LIBLTE_MAC_C_RNTI_START+i]+8)==work_tti 
+        && usr->alloc_chan_type==LIBLTE_PHY_CHAN_TYPE_ULSCH ){
+            return false;
+        }
     }
     return true;
 }

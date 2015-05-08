@@ -69,7 +69,7 @@
 /*******************************************************************************
                               INCLUDES
 *******************************************************************************/
-
+#include <chrono>
 #include <omp.h>
 #include "liblte_common.h"
 #include "liblte_rrc.h"
@@ -154,6 +154,14 @@
 #define LIBLTE_PHY_N_SAMPS_PER_SUBFR_1_92MHZ (LIBLTE_PHY_N_SAMPS_PER_SLOT_1_92MHZ*LIBLTE_PHY_N_SLOTS_PER_SUBFR)
 #define LIBLTE_PHY_N_SAMPS_PER_FRAME_1_92MHZ (LIBLTE_PHY_N_SAMPS_PER_SUBFR_1_92MHZ*LIBLTE_PHY_N_SUBFR_PER_FRAME)
 
+
+#define ANSI_COLOR_RED     "\x1b[31m"
+#define ANSI_COLOR_GREEN   "\x1b[32m"
+#define ANSI_COLOR_YELLOW  "\x1b[33m"
+#define ANSI_COLOR_BLUE    "\x1b[34m"
+#define ANSI_COLOR_MAGENTA "\x1b[35m"
+#define ANSI_COLOR_CYAN    "\x1b[36m"
+#define ANSI_COLOR_RESET   "\x1b[0m"
 /*******************************************************************************
                               TYPEDEFS
 *******************************************************************************/
@@ -278,6 +286,11 @@ typedef struct{
     float          prach_x_u_fft_im[64][839];
     float          prach_x_hat_re[839];
     float          prach_x_hat_im[839];
+    float          prach_prev_fft_re[128*12];
+    float          prach_prev_fft_im[128*12];
+    float          prach_prev_fft_diff_corr_re[128*12];
+    float          prach_prev_fft_diff_corr_im[128*12];
+
     uint32         prach_zczc;
     uint32         prach_preamble_format;
     uint32         prach_root_seq_idx;
@@ -991,7 +1004,7 @@ LIBLTE_ERROR_ENUM liblte_phy_map_pss(LIBLTE_PHY_STRUCT          *phy_struct,
 LIBLTE_ERROR_ENUM liblte_phy_find_pss_and_fine_timing(LIBLTE_PHY_STRUCT *phy_struct,
                                                       float             *i_samps,
                                                       float             *q_samps,
-                                                      uint32            *symb_starts,
+                                                       int32            *symb_starts,
                                                       uint32            *N_id_2,
                                                       uint32            *pss_symb,
                                                       float             *pss_thresh,
@@ -1031,7 +1044,7 @@ LIBLTE_ERROR_ENUM liblte_phy_find_sss_Chang(LIBLTE_PHY_STRUCT *phy_struct,
                                             float             *i_samps,
                                             float             *q_samps,
                                             uint32             N_id_2,
-                                            uint32            *symb_starts,
+                                             int32            *symb_starts,
                                             float              pss_thresh,
                                             uint32            *N_id_1,
                                             uint32            *frame_start_idx,
@@ -1040,7 +1053,7 @@ LIBLTE_ERROR_ENUM liblte_phy_find_sss_Pei_Yun_Tsai(LIBLTE_PHY_STRUCT *phy_struct
                                                    float             *i_samps,
                                                    float             *q_samps,
                                                    uint32             N_id_2,
-                                                   uint32            *symb_starts,
+                                                    int32            *symb_starts,
                                                    float              pss_thresh,
                                                    uint32            *N_id_1,
                                                    uint32            *frame_start_idx);
@@ -1048,7 +1061,7 @@ LIBLTE_ERROR_ENUM liblte_phy_find_sss(LIBLTE_PHY_STRUCT *phy_struct,
                                       float             *i_samps,
                                       float             *q_samps,
                                       uint32             N_id_2,
-                                      uint32            *symb_starts,
+                                       int32            *symb_starts,
                                       float              pss_thresh,
                                       uint32            *N_id_1,
                                       uint32            *frame_start_idx);
@@ -1068,9 +1081,9 @@ LIBLTE_ERROR_ENUM liblte_phy_find_sss(LIBLTE_PHY_STRUCT *phy_struct,
 // Structs
 typedef struct{
     float  freq_offset[LIBLTE_PHY_N_MAX_ROUGH_CORR_SEARCH_PEAKS];
-    uint32 symb_starts[LIBLTE_PHY_N_MAX_ROUGH_CORR_SEARCH_PEAKS][7];
+    int32 symb_starts[LIBLTE_PHY_N_MAX_ROUGH_CORR_SEARCH_PEAKS][7];
 
-    uint32 OFDM_symbol_starts[20][7];
+    int32 OFDM_symbol_starts[20][7];
     float OFDM_symbol_corr[20][7];
 
     uint32 n_corr_peaks;
@@ -1092,7 +1105,7 @@ LIBLTE_ERROR_ENUM liblte_phy_find_pss_and_fine_timing_Chang(LIBLTE_PHY_STRUCT *p
                                                       float             *i_samps,
                                                       float             *q_samps,
                                                       LIBLTE_PHY_COARSE_TIMING_STRUCT     *boundary,
-                                                      uint32            *symb_starts,
+                                                      int32             *symb_starts,
                                                       uint32            *N_id_2,
                                                       uint32            *pss_symb,
                                                       float             *pss_thresh,
@@ -1101,7 +1114,7 @@ LIBLTE_ERROR_ENUM liblte_phy_find_pss_and_fine_timing_Chang_v2(LIBLTE_PHY_STRUCT
                                                       float             *i_samps,
                                                       float             *q_samps,
                                                       LIBLTE_PHY_COARSE_TIMING_STRUCT     *boundary,
-                                                      uint32            *symb_starts,
+                                                      int32             *symb_starts,
                                                       uint32            *N_id_2,
                                                       uint32            *pss_symb,
                                                       float             *pss_thresh,

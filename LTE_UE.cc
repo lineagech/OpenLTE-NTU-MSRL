@@ -34,13 +34,26 @@ const int32 MAX_IN  = 1;
 const int32 MIN_OUT = 0;
 const int32 MAX_OUT = 0;
 
-LTE_fdd_dl_fs_samp_buf* LTE_fdd_dl_fs_samp_buf::instance = NULL;
-Radio* Radio::instance = NULL;
+LTE_fdd_dl_fs_samp_buf* LTE_fdd_dl_fs_samp_buf::instance    = NULL;
+Radio*                  Radio::instance                     = NULL;
 
 /*******************************************************************************
                               EXTERN FUNCTIONS
 *******************************************************************************/
-
+extern void generate_dmrs_pusch(LIBLTE_PHY_STRUCT *phy_struct,
+                                uint32             N_subfr,
+                                uint32             N_id_cell,
+                                uint32             delta_ss,
+                                uint32             cyclic_shift,
+                                uint32             cyclic_shift_dci,
+                                uint32             N_prb,
+                                uint32             layer,
+                                bool               group_hopping_enabled,
+                                bool               sequence_hopping_enabled,
+                                float             *dmrs_0_re,
+                                float             *dmrs_0_im,
+                                float             *dmrs_1_re,
+                                float             *dmrs_1_im);
 /*******************************************************************************
                               CLASS IMPLEMENTATIONS
 *******************************************************************************/
@@ -148,7 +161,7 @@ LTE_fdd_dl_fs_samp_buf* LTE_fdd_dl_fs_samp_buf::get_instance(void)
 }
              
 LTE_fdd_dl_fs_samp_buf::LTE_fdd_dl_fs_samp_buf(size_t fft_size)
-:recv_state(CELL_SEARCH_STATE),fs(LIBLTE_PHY_FS_1_92MHZ),need_config(true),message_idx(0)
+:recv_state(CELL_SEARCH_STATE),fs(LIBLTE_PHY_FS_1_92MHZ),need_config(true),message_idx(0),more_samps(0)
 {
 	uint32 i;
 	// Initialize the LTE parameters
@@ -185,6 +198,27 @@ LTE_fdd_dl_fs_samp_buf::LTE_fdd_dl_fs_samp_buf(size_t fft_size)
 
     Alloc_Info.chan_type    = UNDEFINED_CHAN_TYPE;
     tx_information          = 'Z';
+
+    first_tran              = true;
+    Radio* radio            = Radio::get_instance();
+    phy_struct->fs          = radio->sampling_freq;//1.00*1e6;
+
+
+    // UL system information
+    prach_root_seq_idx       = 0        ;   
+    prach_preamble_format    = 0        ;   
+    prach_zczc               = 0        ;    
+    prach_hs_flag            = false    ;     
+    group_assignment_pusch   = 0        ;  
+    group_hopping_enabled    = false    ;     
+    sequence_hopping_enabled = false    ;     
+    cyclic_shift             = 0        ; 
+    cyclic_shift_dci         = 0        ;
+    sib_recv                 = false    ;   
+    if(get_ul_init() == false)
+    {
+        ul_process();
+    }
 }
 LTE_fdd_dl_fs_samp_buf::~LTE_fdd_dl_fs_samp_buf()
 {
@@ -251,14 +285,36 @@ void LTE_fdd_dl_fs_samp_buf::init(void)
 
 }
 
+void LTE_fdd_dl_fs_samp_buf::reset()
+{
+    current_tti         = 0;
+    cfo                 = 0;
+    sco                 = 0;
+    reg                 = 0;
+    fcfo                = 0;
+    len_offset          = 0;
+    time_offset         = 0;
+    prev_offset         = 0;
+    residual_len        = 0;
+    prev_rcfo           = 0;
+    residual_cfo        = 0;
+    if_shift_fft_window = 0;
+    //time_to_op          = 0;
+    C_RNTI              = LIBLTE_MAC_C_RNTI_START;
+}
+
+
 uint32 LTE_fdd_dl_fs_samp_buf::cell_search(float* i_data, float* q_data, uint32 len, uint32* neg_offset)
 {
     LIBLTE_PHY_COARSE_TIMING_STRUCT  *boundary;
     uint32                            pss_symb;
     uint32                            frame_start_idx;
     float                             pss_thresh;
-    float                             freq_offset;
+    float                             freq_offset     = 0;
     bool                              subframe_5;
+    auto                              start_time      = chrono::high_resolution_clock::now();
+    fcfo = 0;
+    cfo  = 0;
 
     memcpy(&i_buf[0], &i_data[0], len*sizeof(float));
     memcpy(&q_buf[0], &q_data[0], len*sizeof(float));
@@ -273,10 +329,16 @@ uint32 LTE_fdd_dl_fs_samp_buf::cell_search(float* i_data, float* q_data, uint32 
     fprintf(stderr, "fractional freq offset is %10f...\n",timing_struct.freq_offset[0]);
     fcfo = timing_struct.freq_offset[0];
     cfo += timing_struct.freq_offset[0];  /// fcfo
+    cerr<< ANSI_COLOR_YELLOW << "\tCoarse Timing total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
+    cerr<< ANSI_COLOR_RESET;
+
+    start_time      = chrono::high_resolution_clock::now();
     freq_shift_Chang(0, len, timing_struct.freq_offset[0]);
+    cerr<< ANSI_COLOR_YELLOW << "\tCFO Compensation total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
+    cerr<< ANSI_COLOR_RESET;
     
     /*********************************************************************************************************/
-
+    start_time      = chrono::high_resolution_clock::now();
     liblte_phy_find_pss_and_fine_timing_Chang(phy_struct,
                                               &i_buf[0],
                                               &q_buf[0],
@@ -286,6 +348,8 @@ uint32 LTE_fdd_dl_fs_samp_buf::cell_search(float* i_data, float* q_data, uint32 
                                               &pss_symb,
                                               &pss_thresh,
                                               &freq_offset);
+    cerr<< ANSI_COLOR_YELLOW << "\tPSS total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
+    cerr<< ANSI_COLOR_RESET;
 
     cfo += freq_offset;
     freq_shift_Chang(0, len, freq_offset);  ///ICFO
@@ -301,6 +365,7 @@ uint32 LTE_fdd_dl_fs_samp_buf::cell_search(float* i_data, float* q_data, uint32 
         return phy_struct->N_samps_per_frame/2;
     }    
 
+    start_time      = chrono::high_resolution_clock::now();
     liblte_phy_find_sss_Chang(phy_struct,
                               &i_buf[0],
                               &q_buf[0],
@@ -313,13 +378,40 @@ uint32 LTE_fdd_dl_fs_samp_buf::cell_search(float* i_data, float* q_data, uint32 
     fprintf(stderr, "\nN_ID_1:%d and N_ID_2:%d...\nframe_start_idx : %d\n", N_id_1, N_id_2, frame_start_idx);
     N_id_cell = N_id_1*3+N_id_2;
 
+    cerr<< ANSI_COLOR_YELLOW << "\tSSS total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
+    cerr<< ANSI_COLOR_RESET;
+    // PUSCH DMRS
+    #pragma omp parallel for
+    for(uint32 i=0; i<LIBLTE_PHY_N_SUBFR_PER_FRAME; i++)
+    {
+        #pragma omp parallel for
+        for(uint32 j=0; j<LIBLTE_PHY_N_RB_UL_1_4MHZ; j++)
+        {
+            generate_dmrs_pusch(phy_struct,
+                                i,
+                                N_id_cell,
+                                group_assignment_pusch,
+                                cyclic_shift,
+                                cyclic_shift_dci,
+                                j,
+                                0,
+                                group_hopping_enabled,
+                                sequence_hopping_enabled,
+                                phy_struct->dmrs_0_re[i][j],
+                                phy_struct->dmrs_0_im[i][j],
+                                phy_struct->dmrs_1_re[i][j],
+                                phy_struct->dmrs_1_im[i][j]);
+        }
+    }
+
+
     recv_state = PBCH_DECODE_STATE;
 
     if(subframe_5)
     {
-        len_offset      = timing_struct.symb_starts[0][0];
+        len_offset      = timing_struct.symb_starts[0][0]+19200;
     }else{
-        len_offset      = timing_struct.symb_starts[0][0]+9600;
+        len_offset      = timing_struct.symb_starts[0][0]+9600+19200;
     }
     prev_offset    += cfo*2*PI*(len_offset+len)/(phy_struct->fs);
     wrap_phase(&prev_offset, 0);
@@ -327,53 +419,75 @@ uint32 LTE_fdd_dl_fs_samp_buf::cell_search(float* i_data, float* q_data, uint32 
 
 }
 
-uint32 LTE_fdd_dl_fs_samp_buf::execute(float* i_data, float* q_data, uint32 len)
+int32 LTE_fdd_dl_fs_samp_buf::execute(float* i_data, float* q_data, uint32 len)
 {
     Radio* ul_radio = Radio::get_instance();
     uint32 neg_offset;
+    int32  err;
+    auto start_time = chrono::high_resolution_clock::now();
     switch(recv_state)
     {
         case CELL_SEARCH_STATE:
             cell_search(i_data, q_data, len, &neg_offset);
+            cerr<< ANSI_COLOR_BLUE << "\tCell Search total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
+            cerr<< ANSI_COLOR_RESET;
             break;
         case PBCH_DECODE_STATE: 
-            ul_radio->send_from_buffer(ZERO_SIGNAL, ZERO_SIGNAL, 1920);
-            pbch_decoding(i_data, q_data, len);    
-            if(get_ul_init() == false)
-            {
-                ul_process();
-            }
+            //ul_radio->send_from_buffer(ZERO_SIGNAL, ZERO_SIGNAL, 1920);
+            
+            err= pbch_decoding(i_data, q_data, len);    
+            cerr<< ANSI_COLOR_BLUE << "\tPBCH Decoding total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
+            cerr<< ANSI_COLOR_RESET;
+            return err;
+            //if(get_ul_init() == false)
+            //{
+            //    ul_process();
+            //}
+            
             break;
         case PDCCH_DECODE_STATE:
             cerr << "Now is PDCCH Encode State, subframe num:"<< current_tti%10 << endl;
-            getchar();
-            ul_radio->send_from_buffer(ZERO_SIGNAL, ZERO_SIGNAL, 1920);
+            //getchar();
+            //ul_radio->send_from_buffer(ZERO_SIGNAL, ZERO_SIGNAL, 1920);
             if(current_tti%10 == 5)
             {
                 sib1_decoding(i_data, q_data, len);
+                return 0;
             }else if(current_tti%10 != 0){
                 //clock_t t = clock();
-                dlsch_decoding(i_data, q_data, len, current_tti%10);
+                uint32 err_nu = dlsch_decoding(i_data, q_data, len, current_tti%10);
+                cerr<< ANSI_COLOR_BLUE << "\tDLSCH Decoding total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
+                cerr<< ANSI_COLOR_RESET;
+
+                if(err_nu == 2)
+                    return err_nu;
+                else
+                    return 0;
                 //t = clock()-t; fprintf(stderr, "%f secs\n", (float)t/CLOCKS_PER_SEC);
             }else{
                 tracking(i_data, q_data, len);
+                cerr<< ANSI_COLOR_BLUE << "\tTracking total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
+                cerr<< ANSI_COLOR_RESET;
             }
             break;
         case PUCCH_REPORT_STATE:
-                if(time_to_op-2 == current_tti)
+                if(time_to_op-2 == current_tti || (time_to_op-2 && 10240-2==current_tti) )
                 {
                     float ul_i_buf[1920];
                     float ul_q_buf[1920];
 
                     // Uplink Control Channel
                     pucch_encoding(ul_i_buf, ul_q_buf, current_tti%10);
-
+                    cerr<< ANSI_COLOR_BLUE << "\tPUCCH Encoding total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
+                    cerr<< ANSI_COLOR_RESET;
                     // Send to BS
-                    ul_radio->send_from_buffer(ul_i_buf, ul_q_buf, 1920);
+                    //ul_radio->send_from_buffer(ul_i_buf, ul_q_buf, 1920);
                 }else{
-                    ul_radio->send_from_buffer(ZERO_SIGNAL, ZERO_SIGNAL, 1920);
+                    //ul_radio->send_from_buffer(ZERO_SIGNAL, ZERO_SIGNAL, 1920);
                 }
                 tracking(i_data, q_data, len);
+                cerr<< ANSI_COLOR_BLUE << "\tTracking total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
+                cerr<< ANSI_COLOR_RESET;
             break;
         case PUSCH_ENCODE_STATE:
             if(time_to_op-2 == current_tti)
@@ -383,31 +497,40 @@ uint32 LTE_fdd_dl_fs_samp_buf::execute(float* i_data, float* q_data, uint32 len)
 
                 // Uplink Shared Channel 
                 ulsch_encoding(ul_i_buf, ul_q_buf, len);
+                cerr<< ANSI_COLOR_BLUE << "\tPUSCH Encoding total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
 
-                ul_radio->send_from_buffer(ul_i_buf, ul_q_buf, 1920);
+
+                //ul_radio->send_from_buffer(ul_i_buf, ul_q_buf, 1920);
             }else{
-                ul_radio->send_from_buffer(ZERO_SIGNAL, ZERO_SIGNAL, 1920);
+                //ul_radio->send_from_buffer(ZERO_SIGNAL, ZERO_SIGNAL, 1920);
             }    
             tracking(i_data, q_data, len);
             
             break;
         case PHICH_DECODE_STATE:
-            ul_radio->send_from_buffer(ZERO_SIGNAL, ZERO_SIGNAL, 1920);
+            //ul_radio->send_from_buffer(ZERO_SIGNAL, ZERO_SIGNAL, 1920);
             if(time_to_op == current_tti)
             {
                 phich_decoding(i_data, q_data, len, current_tti%10);
+                cerr<< ANSI_COLOR_BLUE << "\tPHICH Decoding total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
+
             }else{
                 tracking(i_data, q_data, len);
             }
             break;
 
         case WATING_STATE:
-            ul_radio->send_from_buffer(ZERO_SIGNAL, ZERO_SIGNAL, 1920);
+            //ul_radio->send_from_buffer(ZERO_SIGNAL, ZERO_SIGNAL, 1920);
   
             if(Alloc_Info.chan_type == LIBLTE_PHY_CHAN_TYPE_DLSCH)
             {
                 if(time_to_op-1 == current_tti)
                     recv_state              = PDCCH_DECODE_STATE;
+                if(time_to_op < current_tti)
+                    recv_state              = PDCCH_DECODE_STATE;
+                //cerr << "TIME_TO_OP "<<time_to_op<<endl;
+                //cerr << "CURR_TTI "<<current_tti<<endl;
+
             }else if(Alloc_Info.chan_type == LIBLTE_PHY_CHAN_TYPE_ULSCH){
                 if(time_to_op-3 == current_tti && !ack_or_nack)
                 {
@@ -419,14 +542,25 @@ uint32 LTE_fdd_dl_fs_samp_buf::execute(float* i_data, float* q_data, uint32 len)
             }
             
             tracking(i_data, q_data, len);
+            //cerr<< ANSI_COLOR_BLUE << "\tTracking total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
+            // if(Alloc_Info.chan_type == UNDEFINED_CHAN_TYPE)
+            //     cerr<< "Channel Type : UNDEFINED_CHAN_TYPE"<<endl;
+            // else if(Alloc_Info.chan_type == LIBLTE_PHY_CHAN_TYPE_DLSCH)
+            //     cerr<< "Channel Type : LIBLTE_PHY_CHAN_TYPE_DLSCH"<<endl;
+            // else if(Alloc_Info.chan_type == LIBLTE_PHY_CHAN_TYPE_ULSCH)
+            //     cerr<< "Channel Type : LIBLTE_PHY_CHAN_TYPE_ULSCH"<<endl;
+            //cerr<< ANSI_COLOR_RESET;
+
+
             break;
         default:
             cerr << "Undefined State..." << endl;
             break;    
     }
+    return 0;
 }
 
-uint32 LTE_fdd_dl_fs_samp_buf::pbch_decoding(float* i_data, float* q_data, uint32 len=1920)
+int32 LTE_fdd_dl_fs_samp_buf::pbch_decoding(float* i_data, float* q_data, uint32 len=1920)
 {   
     LIBLTE_PHY_SUBFRAME_STRUCT*       subframe = new LIBLTE_PHY_SUBFRAME_STRUCT;
     uint32                            N_rb_dl; 
@@ -441,7 +575,7 @@ uint32 LTE_fdd_dl_fs_samp_buf::pbch_decoding(float* i_data, float* q_data, uint3
     liblte_phy_dl_find_coarse_timing_and_freq_offset_Chang(phy_struct,
                                                            i_buf,
                                                            q_buf,
-                                                           20, /// 20 symbols weighted, fixed by Chia-Hao Chang
+                                                           10, /// 10 symbols weighted, fixed by Chia-Hao Chang
                                                            &timing_struct);
     cfo += (timing_struct.freq_offset[0]-fcfo);
     fcfo = timing_struct.freq_offset[0];
@@ -552,6 +686,9 @@ uint32 LTE_fdd_dl_fs_samp_buf::sib1_decoding(float* i_data, float* q_data, uint3
         if(if_shift_fft_window <-1){
             if_shift_fft_window = if_shift_fft_window+1;
             subframe_start_idx_offset ++;
+
+            // Added by Chia-Hao Chang, 2015/04/27
+            more_samps++;
         }
         else{
             if_shift_fft_window = if_shift_fft_window-1;
@@ -659,15 +796,22 @@ uint32 LTE_fdd_dl_fs_samp_buf::dlsch_decoding(float* i_data, float* q_data, uint
     subframe->num = subfr_num;
 
     // synchronization
+    auto start_time = chrono::high_resolution_clock::now();
     liblte_phy_dl_find_coarse_timing_and_freq_offset_Chang(phy_struct,
                                                            i_buf,
                                                            q_buf,
-                                                           20, /// 20 symbols weighted, fixed by Chia-Hao Chang
+                                                           10, /// 10 symbols weighted, fixed by Chia-Hao Chang
                                                            &timing_struct);
+    cerr << ANSI_COLOR_GREEN <<"\t\tCoarse Timing total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;   
+    cerr << ANSI_COLOR_RESET;
+
     cfo += (timing_struct.freq_offset[0]-fcfo);
     fcfo = timing_struct.freq_offset[0];
 
+    start_time = chrono::high_resolution_clock::now();
     freq_shift_Chang(0, len, cfo);
+    cerr << ANSI_COLOR_YELLOW << "\t\tCFO Compensation total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;   
+    cerr << ANSI_COLOR_RESET;
     // compensate timing offset in freq domain of one subframe  
     
     while(if_shift_fft_window <-1 || if_shift_fft_window > 1)
@@ -675,6 +819,9 @@ uint32 LTE_fdd_dl_fs_samp_buf::dlsch_decoding(float* i_data, float* q_data, uint
         if(if_shift_fft_window <-1){
             if_shift_fft_window = if_shift_fft_window+1;
             subframe_start_idx_offset++;
+
+            // Added by Chia-Hao Chang, 2015/04/27
+            more_samps++;
         }
         else{
             if_shift_fft_window = if_shift_fft_window-1;
@@ -692,8 +839,10 @@ uint32 LTE_fdd_dl_fs_samp_buf::dlsch_decoding(float* i_data, float* q_data, uint
                                       subframe);
 
     // handle rcfo & sco in freq domain and update offset error
+    start_time = chrono::high_resolution_clock::now();
     JWLS(phy_struct, i_buf, q_buf, 0, subfr_num, N_id_cell, N_ant, subframe);
-
+    cerr << ANSI_COLOR_YELLOW << "\t\tJWLSE total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;   
+    cerr << ANSI_COLOR_RESET;
     // next is pdcch decoding, so offset is increased by 1 subframe len
     if_shift_fft_window += sco*1*phy_struct->N_samps_per_subfr;
     prev_offset         += cfo*2*PI*(1*phy_struct->N_samps_per_subfr)/(phy_struct->fs);
@@ -702,7 +851,7 @@ uint32 LTE_fdd_dl_fs_samp_buf::dlsch_decoding(float* i_data, float* q_data, uint
     wrap_phase(&prev_offset, 0);
     wrap_offset(&time_offset, phy_struct->N_samps_per_symb);
 
-
+    start_time = chrono::high_resolution_clock::now();
     if(LIBLTE_SUCCESS == liblte_phy_pdcch_channel_decode(phy_struct,
                                                          subframe,
                                                          N_id_cell,
@@ -714,14 +863,17 @@ uint32 LTE_fdd_dl_fs_samp_buf::dlsch_decoding(float* i_data, float* q_data, uint
                                                          &pdcch))
     {
         //fprintf(stderr, "liblte_phy_pdcch_channel_decode succeed...\n");
+        cerr << ANSI_COLOR_BLUE << "\t\tPDCCH Decode total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;   
+        cerr << ANSI_COLOR_RESET;
     }
     else
     {
-        //fprintf(stderr, "liblte_phy_pdcch_channel_decode failed...\n");
+        fprintf(stderr, "liblte_phy_pdcch_channel_decode failed...\n");
         //fprintf(stderr, "=== No control information ===\n");
         current_tti     = (current_tti+1)%(LTE_FDD_ENB_CURRENT_TTI_MAX+1);
         sfn             = (current_tti%10==0) ? ++sfn : sfn;
-        return -1;
+        if(sfn == 1024) { sfn = 0; }
+        return 2;
     }
 
     bool has_sched = false;
@@ -741,12 +893,14 @@ uint32 LTE_fdd_dl_fs_samp_buf::dlsch_decoding(float* i_data, float* q_data, uint
             if(pdcch.alloc[i].chan_type!=UNDEFINED_CHAN_TYPE
                && pdcch.alloc[i].chan_type==LIBLTE_PHY_CHAN_TYPE_DLSCH)
             {
-                if(harq_proc[0].is_toggled(pdcch.alloc[i].ndi))
+                if(harq_proc[0].is_toggled(pdcch.alloc[i].ndi) || first_tran==true)
                 {
                     //cerr << "New transmission" << endl;
                     harq_proc[0].set_TX_NB(0);
                     harq_proc[0].set_NDI(pdcch.alloc[i].ndi);
-                    harq_proc[0].set_RV(0);
+                    harq_proc[0].set_RV(pdcch.alloc[i].rv_idx);
+
+                    first_tran = false;
                 }else{ // Retransmission
                     //cerr << "Retransmission" << endl;
                     harq_proc[0].CURRENT_TX_NB++;
@@ -754,13 +908,15 @@ uint32 LTE_fdd_dl_fs_samp_buf::dlsch_decoding(float* i_data, float* q_data, uint
                 }
             }else if(pdcch.alloc[i].chan_type!=UNDEFINED_CHAN_TYPE
                   && pdcch.alloc[i].chan_type==LIBLTE_PHY_CHAN_TYPE_ULSCH){
-                if(ul_harq_proc[0].is_toggled(pdcch.alloc[i].ndi))
+                if(ul_harq_proc[0].is_toggled(pdcch.alloc[i].ndi) || first_tran==true)
                 {
                     //cerr << "New UL Grant" << endl;
                     ul_harq_proc[0].set_NDI(pdcch.alloc[i].ndi);
-                    Alloc_Info.rv_idx = 0;
+                    //Alloc_Info.rv_idx = 0;
                     ul_harq_proc[0].set_RV(0);
                     
+                    first_tran = false;
+
                 }else{ // Retransmission
                     //cerr << "UL Retransmission" << endl;
                     ul_harq_proc[0].CURRENT_TX_NB++;
@@ -785,6 +941,7 @@ uint32 LTE_fdd_dl_fs_samp_buf::dlsch_decoding(float* i_data, float* q_data, uint
     {
         current_tti     = (current_tti+1)%(LTE_FDD_ENB_CURRENT_TTI_MAX+1);
         sfn             = (current_tti%10==0) ? ++sfn : sfn;
+        if(sfn == 1024) { sfn = 0; }
         return 0;
     }
 
@@ -793,6 +950,7 @@ uint32 LTE_fdd_dl_fs_samp_buf::dlsch_decoding(float* i_data, float* q_data, uint
         fprintf(stderr, "\n=== No control channel at tti %d ===\n\n", current_tti);
         current_tti  = (current_tti+1)%(LTE_FDD_ENB_CURRENT_TTI_MAX+1);
         sfn          = (current_tti%10==0) ? ++sfn : sfn;
+        if(sfn == 1024) { sfn = 0; }
         return 1;
     }
 
@@ -807,9 +965,11 @@ uint32 LTE_fdd_dl_fs_samp_buf::dlsch_decoding(float* i_data, float* q_data, uint
         recv_state   = PUSCH_ENCODE_STATE;
         current_tti  = (current_tti+1)%(LTE_FDD_ENB_CURRENT_TTI_MAX+1);
         sfn          = (current_tti%10==0) ? ++sfn : sfn;
+        if(sfn == 1024) { sfn = 0; }
         return 1;
     }else if(Alloc_Info.chan_type == LIBLTE_PHY_CHAN_TYPE_DLSCH){
         fprintf(stderr, "\n=== Downlink Scheduling at tti %d ===\n\n", current_tti);
+        start_time = chrono::high_resolution_clock::now();
         if(LIBLTE_SUCCESS == liblte_phy_pdsch_channel_decode(phy_struct,
                                                              subframe,
                                                              &pdcch.alloc[pdcch_idx], ///Fixed by Chia-Hao Chang, it has problems... [0] or [2]
@@ -822,7 +982,8 @@ uint32 LTE_fdd_dl_fs_samp_buf::dlsch_decoding(float* i_data, float* q_data, uint
             //fprintf(stderr, "liblte_phy_pdsch_channel_decode succeed...\n");
             message.push_back(rrc_msg);
             message_idx++;
-
+            cerr<< ANSI_COLOR_BLUE << "\tPDSCH Decoding total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
+            cerr<< ANSI_COLOR_RESET;
             print_msg(&rrc_msg);
 
             // need to report ACK to BS
@@ -833,6 +994,7 @@ uint32 LTE_fdd_dl_fs_samp_buf::dlsch_decoding(float* i_data, float* q_data, uint
             time_to_op  = (current_tti+4) % (LTE_FDD_ENB_CURRENT_TTI_MAX+1);
             current_tti = (current_tti+1)%(LTE_FDD_ENB_CURRENT_TTI_MAX+1);
             sfn         = (current_tti%10==0) ? ++sfn : sfn;
+            if(sfn == 1024) { sfn = 0; }
             return 1;
         }
         else
@@ -847,13 +1009,14 @@ uint32 LTE_fdd_dl_fs_samp_buf::dlsch_decoding(float* i_data, float* q_data, uint
             time_to_op  = (current_tti+4) % (LTE_FDD_ENB_CURRENT_TTI_MAX+1);
             current_tti = (current_tti+1)%(LTE_FDD_ENB_CURRENT_TTI_MAX+1);
             sfn         = (current_tti%10==0) ? ++sfn : sfn;
+            if(sfn == 1024) { sfn = 0; }
             return -1;
         } 
     }
 
     current_tti     = (current_tti+1)%(LTE_FDD_ENB_CURRENT_TTI_MAX+1);
     sfn             = (current_tti%10==0) ? ++sfn : sfn;
-
+    if(sfn == 1024) { sfn = 0; }
     return 0;
 }
 
@@ -917,7 +1080,7 @@ uint32 LTE_fdd_dl_fs_samp_buf::ulsch_encoding(float* i_data, float* q_data, uint
 uint32  LTE_fdd_dl_fs_samp_buf::tracking(float* i_data, float* q_data, uint32 len)
 {
     // one subframe
-    // synchronization 
+    // synchronization
     liblte_phy_dl_find_coarse_timing_and_freq_offset_Chang(phy_struct,
                                                            i_data,
                                                            q_data,
@@ -935,7 +1098,7 @@ uint32  LTE_fdd_dl_fs_samp_buf::tracking(float* i_data, float* q_data, uint32 le
 
     current_tti = (current_tti+1)%(LTE_FDD_ENB_CURRENT_TTI_MAX+1);
     sfn          = (current_tti%10==0) ? ++sfn : sfn;
-
+    if(sfn == 1024) { sfn = 0; }
     return 0;
 }
 
@@ -945,8 +1108,8 @@ uint32  LTE_fdd_dl_fs_samp_buf::phich_decoding(float* i_data, float* q_data, uin
     uint32                            k;
     uint32                            pdcch_idx = 0;
     uint32                            frame_start_idx = -subfr_num*phy_struct->N_samps_per_subfr;
-    int32                             subframe_start_idx_offset = 0; 
-    
+    int32                             subframe_start_idx_offset = 0;
+
     // initilize data
     memcpy(&i_buf[0], &i_data[0], len*sizeof(float));
     memcpy(&q_buf[0], &q_data[0], len*sizeof(float));
@@ -969,6 +1132,9 @@ uint32  LTE_fdd_dl_fs_samp_buf::phich_decoding(float* i_data, float* q_data, uin
         if(if_shift_fft_window <-1){
             if_shift_fft_window = if_shift_fft_window+1;
             subframe_start_idx_offset ++;
+
+            // Added by Chia-Hao Chang, 2015/04/27
+            more_samps++;
         }
         else{
             if_shift_fft_window = if_shift_fft_window-1;
@@ -1014,6 +1180,7 @@ uint32  LTE_fdd_dl_fs_samp_buf::phich_decoding(float* i_data, float* q_data, uin
         fprintf(stderr, "liblte_phy_pdcch_channel_decode failed...\n");
         current_tti = (current_tti+1)%(LTE_FDD_ENB_CURRENT_TTI_MAX+1);
         sfn          = (current_tti%10==0) ? ++sfn : sfn;
+        if(sfn == 1024) { sfn = 0; }
         return -1;
     }
 
@@ -1040,6 +1207,7 @@ uint32  LTE_fdd_dl_fs_samp_buf::phich_decoding(float* i_data, float* q_data, uin
 
     current_tti     = (current_tti+1)%(LTE_FDD_ENB_CURRENT_TTI_MAX+1);
     sfn             = (current_tti%10==0) ? ++sfn : sfn;
+    if(sfn == 1024) { sfn = 0; }
 
     return 0;
 }
@@ -1532,6 +1700,9 @@ int LTE_fdd_dl_fs_samp_buf::handle_dl(float* i_recv_buf, float* q_recv_buf, int 
                 if_shift_fft_window = if_shift_fft_window+1;
                 subframe_start_idx_offset ++;
                 subframe_start_idx ++;
+
+                // Added by Chia-Hao Chang, 2015/04/27
+                more_samps++;
             }
             else{
                 if_shift_fft_window = if_shift_fft_window-1;
@@ -2193,16 +2364,44 @@ void LTE_fdd_dl_fs_samp_buf::freq_shift_Chang(uint32 start_idx,
     float  tmp_q;
     uint32 i;
 
+    // #pragma omp parallel for
+    // for(i=start_idx; i<(start_idx+num_samps); i++)
+    // {
+    //     //f_samp_re = cosf((i*(freq_offset)*2*M_PI+prev_offset)/phy_struct->fs);
+    //     //f_samp_im = sinf((i*(freq_offset)*2*M_PI+prev_offset)/phy_struct->fs);
+    //     tmp_i     = i_buf[i];
+    //     tmp_q     = q_buf[i];
+    //     //i_buf[i]  = tmp_i*f_samp_re + tmp_q*f_samp_im;
+    //     //q_buf[i]  = tmp_q*f_samp_re - tmp_i*f_samp_im;
+    //     i_buf[i]  = tmp_i*cosf((i*(freq_offset)*2*M_PI)/phy_struct->fs + prev_offset);
+    //               + tmp_q*sinf((i*(freq_offset)*2*M_PI)/phy_struct->fs + prev_offset);
+    //     q_buf[i]  = tmp_q*cosf((i*(freq_offset)*2*M_PI)/phy_struct->fs + prev_offset);
+    //               - tmp_i*sinf((i*(freq_offset)*2*M_PI)/phy_struct->fs + prev_offset);
+    // }
+
+    float prev_offset_i = cosf(prev_offset);
+    float prev_offset_q = sinf(prev_offset);
+    float phase_shift_i = cosf(freq_offset*2*M_PI/phy_struct->fs);
+    float phase_shift_q = sinf(freq_offset*2*M_PI/phy_struct->fs);
+    float accu_i = prev_offset_i;
+    float accu_q = prev_offset_q;
     #pragma omp parallel for
-    for(i=start_idx; i<(start_idx+num_samps); i++)
+    for(int i=start_idx; i<(start_idx+num_samps); i++)
     {
-        f_samp_re = cosf((i*(freq_offset)*2*M_PI+prev_offset)/phy_struct->fs);
-        f_samp_im = sinf((i*(freq_offset)*2*M_PI+prev_offset)/phy_struct->fs);
+
         tmp_i     = i_buf[i];
         tmp_q     = q_buf[i];
-        i_buf[i]  = tmp_i*f_samp_re + tmp_q*f_samp_im;
-        q_buf[i]  = tmp_q*f_samp_re - tmp_i*f_samp_im;
+        i_buf[i]  = tmp_i*accu_i + tmp_q*accu_q;
+        q_buf[i]  = tmp_q*accu_i - tmp_i*accu_q;
+
+        tmp_i  = accu_i;
+        tmp_q  = accu_q;
+        accu_i = tmp_i*phase_shift_i
+                -tmp_q*phase_shift_q;
+        accu_q = tmp_i*phase_shift_q
+                +tmp_q*phase_shift_i;
     }
+
 }
 
 void LTE_fdd_dl_fs_samp_buf::freq_shift_rcfo(uint32 start_idx, 
@@ -3534,10 +3733,13 @@ Radio* Radio::get_instance(void)
 }
 
 Radio::Radio()
-{
-    //init();
-    recv_buff   = std::vector<std::complex<float> >(19200, std::complex<float>(0.0, 0.0));
-    send_buff   = std::vector<std::complex<float> >(19200, std::complex<float>(0.0, 0.0));
+{   
+    sampling_freq     = 1.92*1e6;
+
+    init();
+
+    recv_buff   = std::vector<std::complex<float> >(192000, std::complex<float>(0.0, 0.0));
+    send_buff   = std::vector<std::complex<float> >(192000, std::complex<float>(0.0, 0.0));
     started     = true;
 }
 
@@ -3553,14 +3755,16 @@ void* Radio::recv_to_buffer(void* inputs)
     uhd::time_spec_t                 next_rx_ts;
     uhd::time_spec_t                 next_rx_subfr_ts;
     uhd::time_spec_t                 check_ts;
-    uhd::stream_cmd_t                cmd = uhd::stream_cmd_t::STREAM_MODE_START_CONTINUOUS;
+    uhd::stream_cmd_t                cmd            = uhd::stream_cmd_t::STREAM_MODE_START_CONTINUOUS;
+    uhd::stream_cmd_t                stop_receiving = uhd::stream_cmd_t::STREAM_MODE_STOP_CONTINUOUS; 
+
     int64                            next_rx_ts_ticks;
     int64                            metadata_ts_ticks;
     uint32                           i;
     uint32                           N_subfrs_dropped;
     uint32                           error          = 0;
     uint32                           recv_size      = 1920*5;
-    uint32                           samp_rate      = 1.92*1e6;
+    uint32                           samp_rate      = sampling_freq;
     uint32                           buf_idx        = 0;
     uint32                           recv_idx       = 0;
     uint32                           samp_idx       = 0;
@@ -3597,9 +3801,13 @@ void* Radio::recv_to_buffer(void* inputs)
         {
             // recv half frame to synchronize the timing
             // num_samps = rx_stream->recv(recv_buff, recv_size, metadata);
+            
+
             num_samps = usrp_0->get_device()->recv(&recv_buff.front(), recv_size, rx_md, 
                                                  uhd::io_type_t::COMPLEX_FLOAT32,
                                                  uhd::device::RECV_MODE_FULL_BUFF);
+            auto start_time = chrono::high_resolution_clock::now();
+
             tx_md.time_spec  = rx_md.time_spec+uhd::time_spec_t::from_ticks(num_samps, samp_rate);
             tx_md.time_spec += uhd::time_spec_t::from_ticks(1920, samp_rate);;
             if(0 != num_samps || (recv_size==0&&0==num_samps))
@@ -3620,7 +3828,7 @@ void* Radio::recv_to_buffer(void* inputs)
                         rx_synced   = true;
 
                         // Start PBCH decoding and synchronization is done.
-                        send_from_buffer(ZERO_SIGNAL, ZERO_SIGNAL, 1920);
+                        //send_from_buffer(ZERO_SIGNAL, ZERO_SIGNAL, 1920);
                         num_samps = usrp_0->get_device()->recv(&recv_buff.front(), 1920, rx_md, 
                                                              uhd::io_type_t::COMPLEX_FLOAT32,
                                                              uhd::device::RECV_MODE_FULL_BUFF);
@@ -3633,7 +3841,9 @@ void* Radio::recv_to_buffer(void* inputs)
                         }
                         samp_idx    = 0;
                         recv_size   = UE->cell_search(rx_radio_buf[buf_idx].i_buf, rx_radio_buf[buf_idx].q_buf, 9600, &neg_offset);
-                    
+                        
+                        cerr<< ANSI_COLOR_BLUE << "\tCell Search total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
+                        cerr<< ANSI_COLOR_RESET;
                         if(neg_offset > 0)
                         {
                             num_samps = usrp_0->get_device()->recv(&recv_buff.front(), neg_offset, rx_md, 
@@ -3656,19 +3866,61 @@ void* Radio::recv_to_buffer(void* inputs)
                 
                 error = UE->execute(rx_radio_buf[buf_idx].i_buf, rx_radio_buf[buf_idx].q_buf, 1920);
                 
+                
+                // Need to Debug
+                // if(UE->more_samps > 0)
+                // {
+                //     usrp_0->get_device()->recv(&recv_buff.front(), UE->more_samps, rx_md, 
+                //                                uhd::io_type_t::COMPLEX_FLOAT32,
+                //                                uhd::device::RECV_MODE_FULL_BUFF);
+                //     UE->more_samps = 0;
+                //     cerr << "FFT Window Shift~~ ..." << endl;
+                // }
+
                 // PBCH decode failed... need to back to cell search state.
                 if(error==-1 && UE->recv_state==CELL_SEARCH_STATE) 
                 {
-                    rx_synced = false;
-                    recv_size = 1920*5;
+                    rx_synced                   = false;
+                    recv_size                   = 1920*5;
+
+                    stop_receiving.stream_now   = true;
+                    usrp_0->issue_stream_cmd(stop_receiving);
+                    //usrp_0->~multi_usrp();
+
+                    //this->init();
+                    init_needed                 = true;
                     continue;
                 }
+
+                if(error == 2) // CFI
+                {   
+                    UE->reset();
+                    rx_synced                   = false;
+                    recv_size                   = 1920*5;
+                    stop_receiving.stream_now   = true;
+                    usrp_0->issue_stream_cmd(stop_receiving);
+                    init_needed                 = true;
+                    continue;
+                }
+
             }    
             // num_samps = rx_stream->recv(recv_buff, recv_size, metadata);
             // already sync, tx should start transmitting.
-            num_samps = usrp_0->get_device()->recv(&recv_buff.front(), 1920, rx_md, 
+            // if(error == 2) // CFI
+            // {   
+            //     UE->reset();
+            //     rx_synced                   = false;
+            //     recv_size                   = 1920*5;
+            //     stop_receiving.stream_now   = true;
+            //     usrp_0->issue_stream_cmd(stop_receiving);
+            //     init_needed                 = true;
+            //     continue;
+            // }else{
+                num_samps = usrp_0->get_device()->recv(&recv_buff.front(), 1920, rx_md, 
                                                  uhd::io_type_t::COMPLEX_FLOAT32,
                                                  uhd::device::RECV_MODE_FULL_BUFF);
+            // }
+            
             //tx_md.time_spec  = rx_md.time_spec;
             //tx_md.time_spec += uhd::time_spec_t::from_ticks(1920, samp_rate);
         }
@@ -3688,7 +3940,7 @@ void* Radio::send_from_buffer(float* i_data, float* q_data, uint32 len)
     }
     // before sending tx_md should set its time_spec_t
     tx_stream->send(&send_buff.front(), 1920, tx_md, 0.001);
-    tx_md.time_spec += uhd::time_spec_t::from_ticks(1920, 1.92*1e6);
+    tx_md.time_spec += uhd::time_spec_t::from_ticks(1920, sampling_freq);
 }
 
 void Radio::init()
@@ -3697,15 +3949,15 @@ void Radio::init()
     uhd::set_thread_priority_safe();
 
     devs                = uhd::device::find(hint);
-    usrp_0                = uhd::usrp::multi_usrp::make(devs[0]); // device_addrs_t
-    usrp_1                = uhd::usrp::multi_usrp::make(devs[1]); 
-
-    init_usrp(1.92*1e6, 0.5*1e9, 40, false,
-              1.92*1e6, 0.5*1e9, 40, false);
+    usrp_0              = uhd::usrp::multi_usrp::make(devs[0]); // device_addrs_t
+    //usrp_1              = uhd::usrp::multi_usrp::make(devs[1]); 
+     
+    init_usrp(sampling_freq, 2.0*1e9, 40, false,
+              sampling_freq, 2.0*1e9, 40, false);
     uhd::stream_args_t    stream_args("fc32");
 
     rx_stream  = usrp_0->get_rx_stream(stream_args);
-    tx_stream  = usrp_1->get_tx_stream(stream_args);
+    tx_stream  = usrp_0->get_tx_stream(stream_args);
 }
 
 void Radio::init_usrp(double rate_0, double freq_0, double gain_0, bool clock_0,
@@ -3728,19 +3980,19 @@ void Radio::init_usrp(double rate_0, double freq_0, double gain_0, bool clock_0,
         usrp_0->set_time_next_pps(uhd::time_spec_t(0.0));
     }
 
-    usrp_1->set_clock_source("mimo"); // tx
-    usrp_1->set_rx_rate(rate_1);
-    usrp_1->set_tx_rate(rate_1);
-    usrp_1->set_rx_freq(freq_1);
-    usrp_1->set_tx_freq(freq_1);
-    usrp_1->set_rx_gain(gain_1);
-    usrp_1->set_tx_gain(gain_1);
+    // usrp_1->set_clock_source("mimo"); // tx
+    // usrp_1->set_rx_rate(rate_1);
+    // usrp_1->set_tx_rate(rate_1);
+    // usrp_1->set_rx_freq(freq_1);
+    // usrp_1->set_tx_freq(freq_1);
+    // usrp_1->set_rx_gain(gain_1);
+    // usrp_1->set_tx_gain(gain_1);
 
-    // sync to external clock
-    if(clock_1) {
-        usrp_1->set_clock_config(uhd::clock_config_t::external());
-        usrp_1->set_time_next_pps(uhd::time_spec_t(0.0));
-    }
+    // // sync to external clock
+    // if(clock_1) {
+    //     usrp_1->set_clock_config(uhd::clock_config_t::external());
+    //     usrp_1->set_time_next_pps(uhd::time_spec_t(0.0));
+    // }
 
     boost::this_thread::sleep(boost::posix_time::milliseconds(1000)); //allow for some setup time
 }
@@ -3766,7 +4018,7 @@ void* Radio::recv_from_mq(void* inputs)
     uint32                           N_subfrs_dropped;
     uint32                           error          = 0;
     uint32                           recv_size      = 1920*5;
-    uint32                           samp_rate      = 1.92*1e6;
+    uint32                           samp_rate      = sampling_freq;
     uint32                           buf_idx        = 0;
     uint32                           recv_idx       = 0;
     uint32                           samp_idx       = 0;
@@ -3803,7 +4055,7 @@ void* Radio::recv_from_mq(void* inputs)
 
                         // Start PBCH decoding and synchronization is done.
                         mq->ul_send_to_mq(ZERO_SIGNAL, ZERO_SIGNAL, 1920);
-                        //mq->ul_send_to_mq(ZERO_SIGNAL, ZERO_SIGNAL, 1920);
+                        mq->ul_send_to_mq(ZERO_SIGNAL, ZERO_SIGNAL, 1920);
 
                         // start thread 
                         boost::thread ul_thread(boost::bind(&Radio::process_ul_mq, this));
@@ -3843,10 +4095,12 @@ uint32 LTE_fdd_dl_fs_samp_buf::mq_execute(float* i_data, float* q_data, uint32 l
 {
     MessageQueue* ul_radio = MessageQueue::get_instance();
     uint32        neg_offset;
+    auto start_time = chrono::high_resolution_clock::now();
     switch(recv_state)
     {
         case CELL_SEARCH_STATE:
             cell_search(i_data, q_data, len, &neg_offset);
+            cerr << "\tCell Search total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
             break;
         case PBCH_DECODE_STATE: 
             //ul_radio->ul_send_to_mq(ZERO_SIGNAL, ZERO_SIGNAL, 1920);
@@ -3856,11 +4110,12 @@ uint32 LTE_fdd_dl_fs_samp_buf::mq_execute(float* i_data, float* q_data, uint32 l
             memset(TX_SIGNAL_IM, 0, 1920*sizeof(float));
             ul_tx_mutex.unlock();
 
-            pbch_decoding(i_data, q_data, len);    
-            if(get_ul_init() == false)
-            {
-                ul_process();
-            }
+            pbch_decoding(i_data, q_data, len);
+            cerr << "\tPBCH Decoding total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;   
+            //if(get_ul_init() == false)
+            //{
+                //ul_process();
+            //}
             break;
         case PDCCH_DECODE_STATE:
             cerr << "Now is PDCCH Decode State, subframe num:"<< current_tti%10 << endl;
@@ -3873,17 +4128,17 @@ uint32 LTE_fdd_dl_fs_samp_buf::mq_execute(float* i_data, float* q_data, uint32 l
             ul_tx_mutex.unlock();
 
 
-            if(current_tti%10 == 5)
+            if(current_tti%10 == 5 && sib_recv==false)
             {
-                //sib1_decoding(i_data, q_data, len);
-                tracking(i_data, q_data, len);
+                sib1_decoding(i_data, q_data, len);
+                sib_recv = true;
+                //tracking(i_data, q_data, len);
             }else if(current_tti%10 != 0){
                 //auto start_time = chrono::high_resolution_clock::now();
                 
                 dlsch_decoding(i_data, q_data, len, current_tti%10);
                 
-                //auto end_time = chrono::high_resolution_clock::now();
-                //cerr << chrono::duration_cast<chrono::microseconds>(end_time - start_time).count() << " us" << endl;;
+                cerr << "\tDLSCH Decoding total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
             }else{
                 //auto start_time = chrono::high_resolution_clock::now();
                 tracking(i_data, q_data, len);
@@ -3902,7 +4157,7 @@ uint32 LTE_fdd_dl_fs_samp_buf::mq_execute(float* i_data, float* q_data, uint32 l
                     ul_tx_mutex.lock();
                     pucch_encoding(TX_SIGNAL_RE, TX_SIGNAL_RE, current_tti%10);
                     ul_tx_mutex.unlock();
-
+                    cerr << "\tPUCCH Encoding total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
                     // Send to BS
                     //ul_radio->ul_send_to_mq(ul_i_buf, ul_q_buf, 1920);
                 }else{
@@ -3912,12 +4167,12 @@ uint32 LTE_fdd_dl_fs_samp_buf::mq_execute(float* i_data, float* q_data, uint32 l
                     memset(TX_SIGNAL_IM, 0, 1920*sizeof(float));
                     ul_tx_mutex.unlock();
                 }
-                auto start_time = chrono::high_resolution_clock::now();
+                //auto start_time = chrono::high_resolution_clock::now();
                 
                 tracking(i_data, q_data, len);
                 
-                auto end_time = chrono::high_resolution_clock::now();
-                cerr << chrono::duration_cast<chrono::microseconds>(end_time - start_time).count() << " us" << endl;;
+                //auto end_time = chrono::high_resolution_clock::now();
+                //cerr << chrono::duration_cast<chrono::microseconds>(end_time - start_time).count() << " us" << endl;;
             }
             break;
         case PUSCH_ENCODE_STATE:
@@ -3929,8 +4184,9 @@ uint32 LTE_fdd_dl_fs_samp_buf::mq_execute(float* i_data, float* q_data, uint32 l
                 // Uplink Shared Channel
                 ul_tx_mutex.lock(); 
                 ulsch_encoding(TX_SIGNAL_RE, TX_SIGNAL_IM, len);
-                ul_tx_mutex.lock();
+                ul_tx_mutex.unlock();
 
+                cerr << "\tPUSCH Decoding total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
                 //ul_radio->ul_send_to_mq(ul_i_buf, ul_q_buf, 1920);
             }else{
                 //ul_radio->ul_send_to_mq(ZERO_SIGNAL, ZERO_SIGNAL, 1920);
@@ -4016,12 +4272,14 @@ void* Radio::process_ul_mq(void)
     LTE_fdd_dl_fs_samp_buf*     UE  = LTE_fdd_dl_fs_samp_buf::get_instance();
 
     uint32          re_tti = UE->current_tti;
+    cerr << "process ul mq\n";
     while(1)
     {
         while(re_tti == UE->current_tti){}
         re_tti = UE->current_tti;
         UE->ul_tx_mutex.lock();
         mq->ul_send_to_mq(TX_SIGNAL_RE, TX_SIGNAL_IM, 1920);
+        cerr << "Send UL subframe..."<<endl;
         UE->ul_tx_mutex.unlock();
 
 

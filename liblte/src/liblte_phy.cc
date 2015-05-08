@@ -2374,6 +2374,79 @@ LIBLTE_ERROR_ENUM liblte_phy_init(LIBLTE_PHY_STRUCT  **phy_struct,
                           (*phy_struct)->bpsk_nack_im,
                           &M_symb);
 
+        // Generate PSS
+        float              pss_re[63];
+        float              pss_im[63];
+        for(int i=0; i<3; i++)
+        {
+            for(int j=0; j<(*phy_struct)->N_rb_dl*(*phy_struct)->N_sc_rb_dl; j++)
+            {
+                (*phy_struct)->pss_mod_re_n3[i][j] = 0;
+                (*phy_struct)->pss_mod_im_n3[i][j] = 0;
+                (*phy_struct)->pss_mod_re_n2[i][j] = 0;
+                (*phy_struct)->pss_mod_im_n2[i][j] = 0;
+                (*phy_struct)->pss_mod_re_n1[i][j] = 0;
+                (*phy_struct)->pss_mod_im_n1[i][j] = 0;
+
+                (*phy_struct)->pss_mod_re[i][j] = 0;
+                (*phy_struct)->pss_mod_im[i][j] = 0;
+
+                (*phy_struct)->pss_mod_re_p3[i][j] = 0;
+                (*phy_struct)->pss_mod_im_p3[i][j] = 0;
+                (*phy_struct)->pss_mod_re_p2[i][j] = 0;
+                (*phy_struct)->pss_mod_im_p2[i][j] = 0;
+                (*phy_struct)->pss_mod_re_p1[i][j] = 0;
+                (*phy_struct)->pss_mod_im_p1[i][j] = 0;
+
+            }
+            generate_pss(i, pss_re, pss_im);
+            for(int j=0; j<62; j++)
+            {
+                int k                                 = j - 31 + ((*phy_struct)->N_rb_dl*(*phy_struct)->N_sc_rb_dl)/2;
+                /* Fixed by Chia-Hao Chang */
+                (*phy_struct)->pss_mod_re_n3[i][k-3] = pss_re[j];
+                (*phy_struct)->pss_mod_im_n3[i][k-3] = pss_im[j];
+                (*phy_struct)->pss_mod_re_n2[i][k-2] = pss_re[j];
+                (*phy_struct)->pss_mod_im_n2[i][k-2] = pss_im[j];
+
+                (*phy_struct)->pss_mod_re_n1[i][k-1] = pss_re[j];
+                (*phy_struct)->pss_mod_im_n1[i][k-1] = pss_im[j];
+                (*phy_struct)->pss_mod_re[i][k]      = pss_re[j];
+                (*phy_struct)->pss_mod_im[i][k]      = pss_im[j];
+                (*phy_struct)->pss_mod_re_p1[i][k+1] = pss_re[j];
+                (*phy_struct)->pss_mod_im_p1[i][k+1] = pss_im[j];
+
+                (*phy_struct)->pss_mod_re_p2[i][k+2] = pss_re[j];
+                (*phy_struct)->pss_mod_im_p2[i][k+2] = pss_im[j];
+                (*phy_struct)->pss_mod_re_p3[i][k+3] = pss_re[j];
+                (*phy_struct)->pss_mod_im_p3[i][k+3] = pss_im[j];
+            }
+        }
+
+        // // SSS
+        // memset((*phy_struct)->sss_mod_re_0, 0, sizeof(float)*168*LIBLTE_PHY_N_RB_DL_20MHZ*LIBLTE_PHY_N_SC_RB_DL_NORMAL_CP);
+        // memset((*phy_struct)->sss_mod_im_0, 0, sizeof(float)*168*LIBLTE_PHY_N_RB_DL_20MHZ*LIBLTE_PHY_N_SC_RB_DL_NORMAL_CP);
+        // memset((*phy_struct)->sss_mod_re_5, 0, sizeof(float)*168*LIBLTE_PHY_N_RB_DL_20MHZ*LIBLTE_PHY_N_SC_RB_DL_NORMAL_CP);
+        // memset((*phy_struct)->sss_mod_im_5, 0, sizeof(float)*168*LIBLTE_PHY_N_RB_DL_20MHZ*LIBLTE_PHY_N_SC_RB_DL_NORMAL_CP);
+        // #pragma omp parallel for
+        // for(i=0; i<168; i++)
+        // {
+        //     generate_sss((*phy_struct),
+        //                  i,
+        //                  2,
+        //                  (*phy_struct)->sss_re_0,
+        //                  (*phy_struct)->sss_im_0,
+        //                  (*phy_struct)->sss_re_5,
+        //                  (*phy_struct)->sss_im_5);
+        //     for(j=0; j<62; j++)
+        //     {
+        //         int k                              = j - 31 + ((*phy_struct)->N_rb_dl*(*phy_struct)->N_sc_rb_dl)/2;
+        //         (*phy_struct)->sss_mod_re_0[i][k] = (*phy_struct)->sss_re_0[j];
+        //         (*phy_struct)->sss_mod_im_0[i][k] = (*phy_struct)->sss_im_0[j];
+        //         (*phy_struct)->sss_mod_re_5[i][k] = (*phy_struct)->sss_re_5[j];
+        //         (*phy_struct)->sss_mod_im_5[i][k] = (*phy_struct)->sss_im_5[j];
+        //     }
+        // }
 
         err = LIBLTE_SUCCESS;
     }
@@ -3085,7 +3158,20 @@ LIBLTE_ERROR_ENUM liblte_phy_generate_prach(LIBLTE_PHY_STRUCT *phy_struct,
             phy_struct->prach_fft_in[idx][0] = phy_struct->prach_dft_out[i][0];
             phy_struct->prach_fft_in[idx][1] = phy_struct->prach_dft_out[i][1];
 
+            phy_struct->prach_prev_fft_re[i] = phy_struct->prach_dft_out[i][0];
+            phy_struct->prach_prev_fft_im[i] = phy_struct->prach_dft_out[i][1];
+
         }
+
+        for(uint32 idx=0; idx<phy_struct->prach_T_fft-1; idx++)
+        {
+            phy_struct->prach_prev_fft_diff_corr_re[idx] = phy_struct->prach_prev_fft_re[idx+1]*phy_struct->prach_prev_fft_re[idx]
+                                                         +phy_struct->prach_prev_fft_im[idx+1]*phy_struct->prach_prev_fft_im[idx];
+            phy_struct->prach_prev_fft_diff_corr_im[idx] = phy_struct->prach_prev_fft_re[idx+1]*phy_struct->prach_prev_fft_im[idx]
+                                                         -phy_struct->prach_prev_fft_im[idx+1]*phy_struct->prach_prev_fft_re[idx];
+
+        }
+
         fftwf_execute(phy_struct->prach_ifft_plan);
         if(phy_struct->prach_T_fft == phy_struct->prach_T_seq)
         {
@@ -3439,14 +3525,6 @@ LIBLTE_ERROR_ENUM liblte_phy_detect_prach_Chang(LIBLTE_PHY_STRUCT *phy_struct,
             phy_struct->prach_dft_in[j][0] = phy_struct->prach_x_hat_re[j];
             phy_struct->prach_dft_in[j][1] = phy_struct->prach_x_hat_im[j];
         }
-        fftwf_execute(phy_struct->prach_idft_plan);
-        for(j=0; j<phy_struct->prach_N_zc; j++)
-        {
-            phy_struct->prach_dft_out[j][0] = phy_struct->prach_dft_out[j][0]/(phy_struct->prach_N_zc);
-            phy_struct->prach_dft_out[j][1] = phy_struct->prach_dft_out[j][1]/(phy_struct->prach_N_zc);
-        }
-        // Correlate with all available roots
-
 
         float ideal_corr_re;
         float ideal_corr_im;
@@ -3461,29 +3539,33 @@ LIBLTE_ERROR_ENUM liblte_phy_detect_prach_Chang(LIBLTE_PHY_STRUCT *phy_struct,
         min_dis = FLT_MAX;
         ave_val = 0;
         max_val = 0;
+
+        ///  Modify in 2015/04/28, noted by Chia-Hao Chang
+
         for(i=0; i<phy_struct->prach_N_x_u; i++)
         {
             abs_corr    = 0;
             abs_corr_re = 0;
             abs_corr_im = 0;
             ave_val     = 0;
-            for(j=0; j<phy_struct->prach_N_zc-1; j++)
+            for(j=0; j<phy_struct->prach_T_fft-1; j++)
             {
-                ideal_corr_re   = phy_struct->prach_x_u_v_re[i][j]*phy_struct->prach_x_u_v_re[i][j+1]
-                                + phy_struct->prach_x_u_v_im[i][j]*phy_struct->prach_x_u_v_im[i][j+1];
-                ideal_corr_im   = phy_struct->prach_x_u_v_re[i][j]*phy_struct->prach_x_u_v_im[i][j+1]
-                                - phy_struct->prach_x_u_v_im[i][j]*phy_struct->prach_x_u_v_re[i][j+1]; 
-                recv_corr_re    = phy_struct->prach_dft_out[j][0]*phy_struct->prach_dft_out[j+1][0]
-                                + phy_struct->prach_dft_out[j][1]*phy_struct->prach_dft_out[j+1][1];             
-                recv_corr_im    = phy_struct->prach_dft_out[j][0]*phy_struct->prach_dft_out[j+1][1]
-                                - phy_struct->prach_dft_out[j][1]*phy_struct->prach_dft_out[j+1][0];
+                // ideal_corr_re   = phy_struct->prach_x_u_v_re[i][j]*phy_struct->prach_x_u_v_re[i][j+1]
+                //                 + phy_struct->prach_x_u_v_im[i][j]*phy_struct->prach_x_u_v_im[i][j+1];
+                // ideal_corr_im   = phy_struct->prach_x_u_v_re[i][j]*phy_struct->prach_x_u_v_im[i][j+1]
+                //                 - phy_struct->prach_x_u_v_im[i][j]*phy_struct->prach_x_u_v_re[i][j+1]; 
+                recv_corr_re    = phy_struct->prach_fft_in[j+1][0]*phy_struct->prach_fft_in[j][0]
+                                + phy_struct->prach_fft_in[j+1][1]*phy_struct->prach_fft_in[j][1];             
+                recv_corr_im    = phy_struct->prach_fft_in[j+1][0]*phy_struct->prach_fft_in[j][1]
+                                - phy_struct->prach_fft_in[j+1][1]*phy_struct->prach_fft_in[j][0];
                 
                 recv_abs_corr   = sqrt(recv_corr_re*recv_corr_re+recv_corr_im*recv_corr_im);
 
-                abs_corr_re     += (ideal_corr_re*recv_corr_re
-                                  + ideal_corr_im*recv_corr_im)/recv_abs_corr;
-                abs_corr_im     += (ideal_corr_re*recv_corr_im
-                                  - ideal_corr_im*recv_corr_re)/recv_abs_corr;
+                abs_corr_re     += (recv_corr_re*phy_struct->prach_prev_fft_diff_corr_re[j]
+                                  + recv_corr_im*phy_struct->prach_prev_fft_diff_corr_im[j])/recv_abs_corr;
+                abs_corr_im     += (recv_corr_re*phy_struct->prach_prev_fft_diff_corr_im[j]
+                                  - recv_corr_im*phy_struct->prach_prev_fft_diff_corr_re[j])/recv_abs_corr;
+                
             }
             distance = (abs_corr_re-838)*(abs_corr_re-838)+(abs_corr_im-0)*(abs_corr_im-0);
             if(distance < min_dis)
@@ -3493,6 +3575,51 @@ LIBLTE_ERROR_ENUM liblte_phy_detect_prach_Chang(LIBLTE_PHY_STRUCT *phy_struct,
             }
             //ave_val = phy_struct->prach_N_zc;
         }
+
+
+        // idft 
+        fftwf_execute(phy_struct->prach_idft_plan);
+        for(j=0; j<phy_struct->prach_N_zc; j++)
+        {
+            phy_struct->prach_dft_out[j][0] = phy_struct->prach_dft_out[j][0]/(phy_struct->prach_N_zc);
+            phy_struct->prach_dft_out[j][1] = phy_struct->prach_dft_out[j][1]/(phy_struct->prach_N_zc);
+        }
+        // Correlate with all available roots
+
+
+        
+        // for(i=0; i<phy_struct->prach_N_x_u; i++)
+        // {
+        //     abs_corr    = 0;
+        //     abs_corr_re = 0;
+        //     abs_corr_im = 0;
+        //     ave_val     = 0;
+        //     for(j=0; j<phy_struct->prach_N_zc-1; j++)
+        //     {
+        //         ideal_corr_re   = phy_struct->prach_x_u_v_re[i][j]*phy_struct->prach_x_u_v_re[i][j+1]
+        //                         + phy_struct->prach_x_u_v_im[i][j]*phy_struct->prach_x_u_v_im[i][j+1];
+        //         ideal_corr_im   = phy_struct->prach_x_u_v_re[i][j]*phy_struct->prach_x_u_v_im[i][j+1]
+        //                         - phy_struct->prach_x_u_v_im[i][j]*phy_struct->prach_x_u_v_re[i][j+1]; 
+        //         recv_corr_re    = phy_struct->prach_dft_out[j][0]*phy_struct->prach_dft_out[j+1][0]
+        //                         + phy_struct->prach_dft_out[j][1]*phy_struct->prach_dft_out[j+1][1];             
+        //         recv_corr_im    = phy_struct->prach_dft_out[j][0]*phy_struct->prach_dft_out[j+1][1]
+        //                         - phy_struct->prach_dft_out[j][1]*phy_struct->prach_dft_out[j+1][0];
+                
+        //         recv_abs_corr   = sqrt(recv_corr_re*recv_corr_re+recv_corr_im*recv_corr_im);
+
+        //         abs_corr_re     += (ideal_corr_re*recv_corr_re
+        //                           + ideal_corr_im*recv_corr_im)/recv_abs_corr;
+        //         abs_corr_im     += (ideal_corr_re*recv_corr_im
+        //                           - ideal_corr_im*recv_corr_re)/recv_abs_corr;
+        //     }
+        //     distance = (abs_corr_re-838)*(abs_corr_re-838)+(abs_corr_im-0)*(abs_corr_im-0);
+        //     if(distance < min_dis)
+        //     {
+        //         max_root = i;
+        //         min_dis  = distance;
+        //     }
+        //     //ave_val = phy_struct->prach_N_zc;
+        // }
         // abs_corr = 0;
         // for(j=0; j<phy_struct->prach_N_zc; j++)
         // {
@@ -4059,15 +4186,18 @@ LIBLTE_ERROR_ENUM liblte_phy_bch_channel_decode(LIBLTE_PHY_STRUCT          *phy_
 
         // Unmap PBCH and channel estimates from resource elements
         idx = 0;
+        //#pragma omp parallel for
         for(i=0; i<72; i++)
         {
             in_idx = phy_struct->N_sc_rb_dl*phy_struct->N_rb_dl/2 - 36 + i;
+            
             if((N_id_cell % 3) != (i % 3))
             {
                 phy_struct->bch_y_est_re[idx]    = subframe->rx_symb_re[7][in_idx];
                 phy_struct->bch_y_est_im[idx]    = subframe->rx_symb_im[7][in_idx];
                 phy_struct->bch_y_est_re[idx+48] = subframe->rx_symb_re[8][in_idx];
                 phy_struct->bch_y_est_im[idx+48] = subframe->rx_symb_im[8][in_idx];
+                
                 for(p=0; p<4; p++)
                 {
                     phy_struct->bch_c_est_re[p][idx]    = subframe->rx_ce_re[p][7][in_idx];
@@ -4081,6 +4211,7 @@ LIBLTE_ERROR_ENUM liblte_phy_bch_channel_decode(LIBLTE_PHY_STRUCT          *phy_
             phy_struct->bch_y_est_im[i+96]  = subframe->rx_symb_im[9][in_idx];
             phy_struct->bch_y_est_re[i+168] = subframe->rx_symb_re[10][in_idx];
             phy_struct->bch_y_est_im[i+168] = subframe->rx_symb_im[10][in_idx];
+            
             for(p=0; p<4; p++)
             {
                 phy_struct->bch_c_est_re[p][i+96]  = subframe->rx_ce_re[p][9][in_idx];
@@ -4094,6 +4225,7 @@ LIBLTE_ERROR_ENUM liblte_phy_bch_channel_decode(LIBLTE_PHY_STRUCT          *phy_
         generate_prs_c(N_id_cell, 1920, phy_struct->bch_c);
 
         // Try decoding with 1, 2, and 4 antennas
+
         for(p=1; p<5; p++)
         {
             if(p != 3)
@@ -5403,8 +5535,8 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_decode_Chang(LIBLTE_PHY_STRUCT       
                                                      0,
                                                      phy_struct->pdcch_dci,
                                                      dci_1a_size,
-                                                     &rnti) ||
-                LIBLTE_SUCCESS == dci_channel_decode(phy_struct,
+                                                     &rnti) 
+               /*||LIBLTE_SUCCESS == dci_channel_decode(phy_struct,
                                                      phy_struct->pdcch_descramb_bits,
                                                      N_bits,
                                                      LIBLTE_MAC_P_RNTI,
@@ -5421,7 +5553,7 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_decode_Chang(LIBLTE_PHY_STRUCT       
                                                      0,
                                                      phy_struct->pdcch_dci,
                                                      dci_1a_size,
-                                                     &rnti)))
+                                                     &rnti)*/))
             {
                 err = LIBLTE_SUCCESS;
                 dci_1a_unpack(phy_struct->pdcch_dci,
@@ -5516,6 +5648,7 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_decode_Chang(LIBLTE_PHY_STRUCT       
                                 LIBLTE_PHY_MODULATION_TYPE_QPSK,
                                 phy_struct->pdcch_soft_bits,
                                 &N_bits);
+            
             for(j=0; j<N_bits; j++)
             {
                 phy_struct->pdcch_descramb_bits[j] = (float)phy_struct->pdcch_soft_bits[j]*(1-2*(float)phy_struct->pdcch_c[i*576+j]);
@@ -5529,8 +5662,8 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_decode_Chang(LIBLTE_PHY_STRUCT       
                                                      0,
                                                      phy_struct->pdcch_dci,
                                                      dci_1a_size,
-                                                     &rnti) ||
-                LIBLTE_SUCCESS == dci_channel_decode(phy_struct,
+                                                     &rnti) 
+               /*||LIBLTE_SUCCESS == dci_channel_decode(phy_struct,
                                                      phy_struct->pdcch_descramb_bits,
                                                      N_bits,
                                                      LIBLTE_MAC_P_RNTI,
@@ -5547,7 +5680,7 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_decode_Chang(LIBLTE_PHY_STRUCT       
                                                      0,
                                                      phy_struct->pdcch_dci,
                                                      dci_1a_size,
-                                                     &rnti)))
+                                                     &rnti)*/))
             {
                 err = LIBLTE_SUCCESS;
                 dci_1a_unpack(phy_struct->pdcch_dci,
@@ -6081,9 +6214,11 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_decode(LIBLTE_PHY_STRUCT             
         }
 
         // Try decoding DCI 1A and 1C for SI in the common search space
-        pdcch->N_alloc = 0;
-        for(i=0; i<1/*4*/; i++)
+        if(subframe->num == 5)
         {
+            pdcch->N_alloc = 0;
+            for(i=0; i<1/*4*/; i++)
+            {
             idx = 0;
             for(j=0; j<4; j++)
             {
@@ -6211,9 +6346,9 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_decode(LIBLTE_PHY_STRUCT             
                               &pdcch->alloc[pdcch->N_alloc++]);
             }
             */
-        }
-        for(i=0; i<1/*2*/; i++)
-        {
+            }
+            for(i=0; i<1/*2*/; i++)
+            {
             idx = 0;
             for(j=0; j<8; j++)
             {
@@ -6341,20 +6476,20 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_decode(LIBLTE_PHY_STRUCT             
                               &pdcch->alloc[pdcch->N_alloc++]);
             }
             */
-        }
-
-        //fprintf(stderr, "-----------------------\n-----------------------\n");
-        //fprintf(stderr, "Try blind decoding PDCCH UE-specific search space\n");
-        //fprintf(stderr, "-----------------------\n-----------------------\n");
-
-        // Try decoding DCI 1A and 1C for UE data in the UE-specific search space
-        Y_k = pdcch->c_rnti;
-        for(i=0; i<=subframe->num; i++)
-        {
-            Y_k = (39827 * Y_k) % 65537;
-        }
-        for(i=0; i<1/*4*/; i++)
-        {
+            }
+        }else{
+            //fprintf(stderr, "-----------------------\n-----------------------\n");
+            //fprintf(stderr, "Try blind decoding PDCCH UE-specific search space\n");
+            //fprintf(stderr, "-----------------------\n-----------------------\n");
+    
+            // Try decoding DCI 1A and 1C for UE data in the UE-specific search space
+            Y_k = pdcch->c_rnti;
+            for(i=0; i<=subframe->num; i++)
+            {
+                Y_k = (39827 * Y_k) % 65537;
+            }
+            for(i=0; i<1/*4*/; i++)
+            {
             idx = 0;
             actual_idx = 4*((Y_k+i) % (N_cce_pdcch/4));
             for(j=0; j<4; j++)
@@ -6408,7 +6543,7 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_decode(LIBLTE_PHY_STRUCT             
                                                      phy_struct->pdcch_descramb_bits,
                                                      N_bits,
                                                      LIBLTE_MAC_C_RNTI_START,
-                                                     LIBLTE_MAC_C_RNTI_END-LIBLTE_MAC_C_RNTI_START,
+                                                     LIBLTE_MAC_C_RNTI_START+5-LIBLTE_MAC_C_RNTI_START,
                                                      0,
                                                      phy_struct->pdcch_dci,
                                                      dci_1a_size,
@@ -6447,8 +6582,8 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_decode(LIBLTE_PHY_STRUCT             
                               &pdcch->alloc[pdcch->N_alloc++]);
             }
             */
+            }
         }
-
     }
 
     return(err);
@@ -6604,6 +6739,7 @@ LIBLTE_ERROR_ENUM liblte_phy_map_pss(LIBLTE_PHY_STRUCT          *phy_struct,
 
         for(p=0; p<N_ant; p++)
         {
+            #pragma omp parallel for
             for(i=0; i<62; i++)
             {
                 k                             = i - 31 + (phy_struct->N_rb_dl*phy_struct->N_sc_rb_dl)/2;
@@ -6629,7 +6765,7 @@ LIBLTE_ERROR_ENUM liblte_phy_map_pss(LIBLTE_PHY_STRUCT          *phy_struct,
 LIBLTE_ERROR_ENUM liblte_phy_find_pss_and_fine_timing(LIBLTE_PHY_STRUCT *phy_struct,
                                                       float             *i_samps,
                                                       float             *q_samps,
-                                                      uint32            *symb_starts,
+                                                       int32            *symb_starts,
                                                       uint32            *N_id_2,
                                                       uint32            *pss_symb,
                                                       float             *pss_thresh,
@@ -6836,7 +6972,7 @@ LIBLTE_ERROR_ENUM liblte_phy_find_pss_and_fine_timing_Chang(LIBLTE_PHY_STRUCT   
                                                             float                               *i_samps,
                                                             float                               *q_samps,
                                                             LIBLTE_PHY_COARSE_TIMING_STRUCT     *boundary,
-                                                            uint32                              *symb_starts,
+                                                             int32                              *symb_starts,
                                                             uint32                              *N_id_2,
                                                             uint32                              *pss_symb,
                                                             float                               *pss_thresh,
@@ -6888,51 +7024,51 @@ LIBLTE_ERROR_ENUM liblte_phy_find_pss_and_fine_timing_Chang(LIBLTE_PHY_STRUCT   
        pss_thresh  != NULL)
     {
         // Generate PSS
-        for(i=0; i<3; i++)
-        {
-            for(j=0; j<phy_struct->N_rb_dl*phy_struct->N_sc_rb_dl; j++)
-            {
-                phy_struct->pss_mod_re_n3[i][j] = 0;
-                phy_struct->pss_mod_im_n3[i][j] = 0;
-                phy_struct->pss_mod_re_n2[i][j] = 0;
-                phy_struct->pss_mod_im_n2[i][j] = 0;
-                phy_struct->pss_mod_re_n1[i][j] = 0;
-                phy_struct->pss_mod_im_n1[i][j] = 0;
+        // for(i=0; i<3; i++)
+        // {
+        //     for(j=0; j<phy_struct->N_rb_dl*phy_struct->N_sc_rb_dl; j++)
+        //     {
+        //         phy_struct->pss_mod_re_n3[i][j] = 0;
+        //         phy_struct->pss_mod_im_n3[i][j] = 0;
+        //         phy_struct->pss_mod_re_n2[i][j] = 0;
+        //         phy_struct->pss_mod_im_n2[i][j] = 0;
+        //         phy_struct->pss_mod_re_n1[i][j] = 0;
+        //         phy_struct->pss_mod_im_n1[i][j] = 0;
 
-                phy_struct->pss_mod_re[i][j] = 0;
-                phy_struct->pss_mod_im[i][j] = 0;
+        //         phy_struct->pss_mod_re[i][j] = 0;
+        //         phy_struct->pss_mod_im[i][j] = 0;
 
-                phy_struct->pss_mod_re_p3[i][j] = 0;
-                phy_struct->pss_mod_im_p3[i][j] = 0;
-                phy_struct->pss_mod_re_p2[i][j] = 0;
-                phy_struct->pss_mod_im_p2[i][j] = 0;
-                phy_struct->pss_mod_re_p1[i][j] = 0;
-                phy_struct->pss_mod_im_p1[i][j] = 0;
+        //         phy_struct->pss_mod_re_p3[i][j] = 0;
+        //         phy_struct->pss_mod_im_p3[i][j] = 0;
+        //         phy_struct->pss_mod_re_p2[i][j] = 0;
+        //         phy_struct->pss_mod_im_p2[i][j] = 0;
+        //         phy_struct->pss_mod_re_p1[i][j] = 0;
+        //         phy_struct->pss_mod_im_p1[i][j] = 0;
 
-            }
-            generate_pss(i, pss_re, pss_im);
-            for(j=0; j<62; j++)
-            {
-                k                                 = j - 31 + (phy_struct->N_rb_dl*phy_struct->N_sc_rb_dl)/2;
-                /* Fixed by Chia-Hao Chang */
-                phy_struct->pss_mod_re_n3[i][k-3] = pss_re[j];
-                phy_struct->pss_mod_im_n3[i][k-3] = pss_im[j];
-                phy_struct->pss_mod_re_n2[i][k-2] = pss_re[j];
-                phy_struct->pss_mod_im_n2[i][k-2] = pss_im[j];
+        //     }
+        //     generate_pss(i, pss_re, pss_im);
+        //     for(j=0; j<62; j++)
+        //     {
+        //         k                                 = j - 31 + (phy_struct->N_rb_dl*phy_struct->N_sc_rb_dl)/2;
+        //         /* Fixed by Chia-Hao Chang */
+        //         phy_struct->pss_mod_re_n3[i][k-3] = pss_re[j];
+        //         phy_struct->pss_mod_im_n3[i][k-3] = pss_im[j];
+        //         phy_struct->pss_mod_re_n2[i][k-2] = pss_re[j];
+        //         phy_struct->pss_mod_im_n2[i][k-2] = pss_im[j];
 
-                phy_struct->pss_mod_re_n1[i][k-1] = pss_re[j];
-                phy_struct->pss_mod_im_n1[i][k-1] = pss_im[j];
-                phy_struct->pss_mod_re[i][k]      = pss_re[j];
-                phy_struct->pss_mod_im[i][k]      = pss_im[j];
-                phy_struct->pss_mod_re_p1[i][k+1] = pss_re[j];
-                phy_struct->pss_mod_im_p1[i][k+1] = pss_im[j];
+        //         phy_struct->pss_mod_re_n1[i][k-1] = pss_re[j];
+        //         phy_struct->pss_mod_im_n1[i][k-1] = pss_im[j];
+        //         phy_struct->pss_mod_re[i][k]      = pss_re[j];
+        //         phy_struct->pss_mod_im[i][k]      = pss_im[j];
+        //         phy_struct->pss_mod_re_p1[i][k+1] = pss_re[j];
+        //         phy_struct->pss_mod_im_p1[i][k+1] = pss_im[j];
 
-                phy_struct->pss_mod_re_p2[i][k+2] = pss_re[j];
-                phy_struct->pss_mod_im_p2[i][k+2] = pss_im[j];
-                phy_struct->pss_mod_re_p3[i][k+3] = pss_re[j];
-                phy_struct->pss_mod_im_p3[i][k+3] = pss_im[j];
-            }
-        }
+        //         phy_struct->pss_mod_re_p2[i][k+2] = pss_re[j];
+        //         phy_struct->pss_mod_im_p2[i][k+2] = pss_im[j];
+        //         phy_struct->pss_mod_re_p3[i][k+3] = pss_re[j];
+        //         phy_struct->pss_mod_im_p3[i][k+3] = pss_im[j];
+        //     }
+        // }
 
         // Demod symbols and correlate with PSS
         corr_max = FLT_MAX ;
@@ -7285,32 +7421,32 @@ LIBLTE_ERROR_ENUM liblte_phy_find_pss_and_fine_timing_Chang(LIBLTE_PHY_STRUCT   
             pss_mod_re   = &phy_struct->pss_mod_re_n3[*N_id_2][0];
             pss_mod_im   = &phy_struct->pss_mod_im_n3[*N_id_2][0];
             //*freq_offset = -15000*3; // FIXME
-            *freq_offset = -((phy_struct->fs)/(phy_struct->FFT_size))*3;
+            *freq_offset = -((phy_struct->fs)/(128.0))*3.0;
         }else if(-2 == idx){
             pss_mod_re   = &phy_struct->pss_mod_re_n2[*N_id_2][0];
             pss_mod_im   = &phy_struct->pss_mod_im_n2[*N_id_2][0];
-            *freq_offset = -((phy_struct->fs)/(phy_struct->FFT_size))*2; // FIXME
+            *freq_offset = -((phy_struct->fs)/(128.0))*2.0; // FIXME
         }else if(-1 == idx){
             pss_mod_re   = &phy_struct->pss_mod_re_n1[*N_id_2][0];
             pss_mod_im   = &phy_struct->pss_mod_im_n1[*N_id_2][0];
-            *freq_offset = -((phy_struct->fs)/(phy_struct->FFT_size)); // FIXME
+            *freq_offset = -((phy_struct->fs)/(128.0)); // FIXME
         }else if(0 == idx){
             pss_mod_re   = &phy_struct->pss_mod_re[*N_id_2][0];
             pss_mod_im   = &phy_struct->pss_mod_im[*N_id_2][0];
-            *freq_offset = 0;
+            *freq_offset = 0.0;
         }else if(1 == idx){
             pss_mod_re   = &phy_struct->pss_mod_re_p1[*N_id_2][0];
             pss_mod_im   = &phy_struct->pss_mod_im_p1[*N_id_2][0];
-            *freq_offset = ((phy_struct->fs)/(phy_struct->FFT_size)); // FIXME
+            *freq_offset = ((phy_struct->fs)/(128.0)); // FIXME
         }
         else if(2 == idx){
             pss_mod_re   = &phy_struct->pss_mod_re_p2[*N_id_2][0];
             pss_mod_im   = &phy_struct->pss_mod_im_p2[*N_id_2][0];
-            *freq_offset = ((phy_struct->fs)/(phy_struct->FFT_size))*2; // FIXME
+            *freq_offset = ((phy_struct->fs)/(128.0))*2.0; // FIXME
         }else if(3 == idx){
             pss_mod_re   = &phy_struct->pss_mod_re_p3[*N_id_2][0];
             pss_mod_im   = &phy_struct->pss_mod_im_p3[*N_id_2][0];
-            *freq_offset = ((phy_struct->fs)/(phy_struct->FFT_size))*3; // FIXME
+            *freq_offset = ((phy_struct->fs)/(128.0))*3.0; // FIXME
         }
           
 
@@ -7388,7 +7524,7 @@ LIBLTE_ERROR_ENUM liblte_phy_find_pss_and_fine_timing_Chang_v2(LIBLTE_PHY_STRUCT
                                                             float                               *i_samps,
                                                             float                               *q_samps,
                                                             LIBLTE_PHY_COARSE_TIMING_STRUCT     *boundary,
-                                                            uint32                              *symb_starts,
+                                                             int32                              *symb_starts,
                                                             uint32                              *N_id_2,
                                                             uint32                              *pss_symb,
                                                             float                               *pss_thresh,
@@ -7967,6 +8103,7 @@ LIBLTE_ERROR_ENUM liblte_phy_map_sss(LIBLTE_PHY_STRUCT          *phy_struct,
         {
             for(p=0; p<N_ant; p++)
             {
+                #pragma omp parallel for
                 for(i=0; i<62; i++)
                 {
                     k                             = i - 31 + (phy_struct->N_rb_dl*phy_struct->N_sc_rb_dl)/2;
@@ -7977,6 +8114,7 @@ LIBLTE_ERROR_ENUM liblte_phy_map_sss(LIBLTE_PHY_STRUCT          *phy_struct,
         }else if(subframe->num == 5){
             for(p=0; p<N_ant; p++)
             {
+                #pragma omp parallel for
                 for(i=0; i<62; i++)
                 {
                     k                             = i - 31 + (phy_struct->N_rb_dl*phy_struct->N_sc_rb_dl)/2;
@@ -8003,7 +8141,7 @@ LIBLTE_ERROR_ENUM liblte_phy_find_sss_Chang(LIBLTE_PHY_STRUCT *phy_struct,
                                             float             *i_samps,
                                             float             *q_samps,
                                             uint32             N_id_2,
-                                            uint32            *symb_starts,
+                                             int32            *symb_starts,
                                             float              pss_thresh,
                                             uint32            *N_id_1,
                                             uint32            *frame_start_idx,
@@ -8044,6 +8182,7 @@ LIBLTE_ERROR_ENUM liblte_phy_find_sss_Chang(LIBLTE_PHY_STRUCT *phy_struct,
         memset(phy_struct->sss_mod_im_0, 0, sizeof(float)*168*LIBLTE_PHY_N_RB_DL_20MHZ*LIBLTE_PHY_N_SC_RB_DL_NORMAL_CP);
         memset(phy_struct->sss_mod_re_5, 0, sizeof(float)*168*LIBLTE_PHY_N_RB_DL_20MHZ*LIBLTE_PHY_N_SC_RB_DL_NORMAL_CP);
         memset(phy_struct->sss_mod_im_5, 0, sizeof(float)*168*LIBLTE_PHY_N_RB_DL_20MHZ*LIBLTE_PHY_N_SC_RB_DL_NORMAL_CP);
+        #pragma omp parallel for
         for(i=0; i<168; i++)
         {
             generate_sss(phy_struct,
@@ -8081,6 +8220,7 @@ LIBLTE_ERROR_ENUM liblte_phy_find_sss_Chang(LIBLTE_PHY_STRUCT *phy_struct,
             beta_m0_re[j/2]                = phy_struct->rx_symb_re[k]*phy_struct->sss_c0[j/2];
             beta_m0_im[j/2]                = phy_struct->rx_symb_im[k]*phy_struct->sss_c0[j/2];
         }
+        
         for(i=0; i<30; i++) /// i->m0, find largest m0
         {
             beta_corr_re    = 0;
@@ -8164,7 +8304,7 @@ LIBLTE_ERROR_ENUM liblte_phy_find_sss_Pei_Yun_Tsai(LIBLTE_PHY_STRUCT *phy_struct
                                                    float             *i_samps,
                                                    float             *q_samps,
                                                    uint32             N_id_2,
-                                                   uint32            *symb_starts,
+                                                    int32            *symb_starts,
                                                    float              pss_thresh,
                                                    uint32            *N_id_1,
                                                    uint32            *frame_start_idx)
@@ -8346,7 +8486,7 @@ LIBLTE_ERROR_ENUM liblte_phy_find_sss(LIBLTE_PHY_STRUCT *phy_struct,
                                       float             *i_samps,
                                       float             *q_samps,
                                       uint32             N_id_2,
-                                      uint32            *symb_starts,
+                                       int32            *symb_starts,
                                       float              pss_thresh,
                                       uint32            *N_id_1,
                                       uint32            *frame_start_idx)
@@ -8506,6 +8646,7 @@ LIBLTE_ERROR_ENUM liblte_phy_dl_find_coarse_timing_and_freq_offset_Chang(LIBLTE_
             corr_re = 0;
             corr_im = 0;
             corr_power = 0;
+            //#pragma omp parallel for
             for(symbol=0; symbol<N_symbols; symbol++) ///OFDM symbols
             {
                 k = symbol*N_samps_per_symb_else + i;    
@@ -8535,7 +8676,13 @@ LIBLTE_ERROR_ENUM liblte_phy_dl_find_coarse_timing_and_freq_offset_Chang(LIBLTE_
                 }
             }
         }
+        if(timing_struct->symb_starts[0][0] < 0)
+        {
+            timing_struct->symb_starts[0][0] = 0;
+        }
+
         fprintf(stderr,"symb_starts is %d from coarse timing\n",timing_struct->symb_starts[0][0]);
+        #pragma omp parallel for
         for(i=1; i<7; i++)
         {
             if(i==1){
@@ -8547,7 +8694,8 @@ LIBLTE_ERROR_ENUM liblte_phy_dl_find_coarse_timing_and_freq_offset_Chang(LIBLTE_
         }
 
         // Determine frequency offset
-        timing_struct->freq_offset[0] = phy_struct->dl_timing_angle[timing_struct->symb_starts[0][0]] / (phy_struct->N_samps_per_symb*2*M_PI*(0.0005/phy_struct->N_samps_per_slot));
+        //timing_struct->freq_offset[0] = phy_struct->dl_timing_angle[timing_struct->symb_starts[0][0]] / (phy_struct->N_samps_per_symb*2*M_PI*(0.0005/phy_struct->N_samps_per_slot));
+        timing_struct->freq_offset[0] = phy_struct->dl_timing_angle[timing_struct->symb_starts[0][0]] / (phy_struct->N_samps_per_symb*2*M_PI*(1.0/phy_struct->fs));
         fprintf(stderr,"freq_offset is %f from coarse timing\n",timing_struct->freq_offset[0]);
 
         //getchar();
@@ -8788,10 +8936,10 @@ LIBLTE_ERROR_ENUM liblte_phy_get_dl_subframe_and_ce(LIBLTE_PHY_STRUCT          *
                                                     LIBLTE_PHY_SUBFRAME_STRUCT *subframe)
 {
     LIBLTE_ERROR_ENUM  err = LIBLTE_ERROR_INVALID_INPUTS;
-    float             *sym_re;
-    float             *sym_im;
-    float             *rs_re;
-    float             *rs_im;
+    //float             *sym_re;
+    //float             *sym_im;
+    //float             *rs_re;
+    //float             *rs_im;
     float              tmp_re;
     float              tmp_im;
     float              frac_mag = 0;
@@ -8810,6 +8958,7 @@ LIBLTE_ERROR_ENUM liblte_phy_get_dl_subframe_and_ce(LIBLTE_PHY_STRUCT          *
     uint32             sym[5];
     uint32             z;
 
+
     if(phy_struct != NULL &&
        i_samps    != NULL &&
        q_samps    != NULL &&
@@ -8820,6 +8969,7 @@ LIBLTE_ERROR_ENUM liblte_phy_get_dl_subframe_and_ce(LIBLTE_PHY_STRUCT          *
     {
         subframe->num = subfr_num;  // need to assign outside, Chia-Hao Chang
         
+        auto start_time = chrono::high_resolution_clock::now();
         #pragma omp parallel for
         for(i=0; i<16; i++)
         {
@@ -8834,19 +8984,50 @@ LIBLTE_ERROR_ENUM liblte_phy_get_dl_subframe_and_ce(LIBLTE_PHY_STRUCT          *
                                   &subframe->rx_symb_re[i][0],
                                   &subframe->rx_symb_im[i][0]);
         }
-
+        cerr << ANSI_COLOR_RED << "\t\t\tFFT total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;   
+        
         // Generate cell specific reference signals
-        generate_crs((subfr_num*2+0)%20, 0, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[0],  phy_struct->dl_ce_crs_im[0]);
-        generate_crs((subfr_num*2+0)%20, 1, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[1],  phy_struct->dl_ce_crs_im[1]);
-        generate_crs((subfr_num*2+0)%20, 4, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[4],  phy_struct->dl_ce_crs_im[4]);
-        generate_crs((subfr_num*2+1)%20, 0, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[7],  phy_struct->dl_ce_crs_im[7]);
-        generate_crs((subfr_num*2+1)%20, 1, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[8],  phy_struct->dl_ce_crs_im[8]);
-        generate_crs((subfr_num*2+1)%20, 4, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[11], phy_struct->dl_ce_crs_im[11]);
-        generate_crs((subfr_num*2+2)%20, 0, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[14], phy_struct->dl_ce_crs_im[14]);
-        generate_crs((subfr_num*2+2)%20, 1, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[15], phy_struct->dl_ce_crs_im[15]);
-
+        start_time = chrono::high_resolution_clock::now();
+        #pragma omp parallel sections
+        {
+            #pragma omp section
+            {
+                generate_crs((subfr_num*2+0)%20, 0, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[0],  phy_struct->dl_ce_crs_im[0]);
+            }
+            #pragma omp section
+            {
+                generate_crs((subfr_num*2+0)%20, 1, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[1],  phy_struct->dl_ce_crs_im[1]);
+            }
+            #pragma omp section
+            {
+                generate_crs((subfr_num*2+0)%20, 4, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[4],  phy_struct->dl_ce_crs_im[4]);
+            }      
+            #pragma omp section
+            {
+                generate_crs((subfr_num*2+1)%20, 0, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[7],  phy_struct->dl_ce_crs_im[7]);
+            }
+            #pragma omp section
+            {
+                generate_crs((subfr_num*2+1)%20, 1, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[8],  phy_struct->dl_ce_crs_im[8]);
+            }
+            #pragma omp section
+            {
+                generate_crs((subfr_num*2+1)%20, 4, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[11], phy_struct->dl_ce_crs_im[11]);
+            }
+            #pragma omp section
+            {
+                generate_crs((subfr_num*2+2)%20, 0, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[14], phy_struct->dl_ce_crs_im[14]);
+            }
+            #pragma omp section
+            {
+                generate_crs((subfr_num*2+2)%20, 1, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[15], phy_struct->dl_ce_crs_im[15]);
+            }
+        } 
+        cerr << ANSI_COLOR_RED << "\t\t\tGen RS total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;   
+ 
         // Determine channel estimates
-        for(p=0; p<N_ant; p++)
+        start_time = chrono::high_resolution_clock::now();
+        for(p=0; p<1; p++)
         {
             // Define v, sym, and N_sym
             if(p == 0)
@@ -8892,188 +9073,343 @@ LIBLTE_ERROR_ENUM liblte_phy_get_dl_subframe_and_ce(LIBLTE_PHY_STRUCT          *
                 N_sym  = 3;
             }
 
+            // #pragma omp parallel for private(j, z)
+            // for(i=0; i<N_sym; i++)
+            // {
+            //     sym_re = &subframe->rx_symb_re[sym[i]][0];
+            //     sym_im = &subframe->rx_symb_im[sym[i]][0];
+            //     rs_re  = &phy_struct->dl_ce_crs_re[sym[i]][0];
+            //     rs_im  = &phy_struct->dl_ce_crs_im[sym[i]][0];
+
+            //     for(j=0; j<2*phy_struct->N_rb_dl; j++)
+            //     {
+            //         k                           = 6*j + (v[i] + v_shift)%6;
+            //         m_prime                     = j + LIBLTE_PHY_N_RB_DL_MAX - phy_struct->N_rb_dl;
+            //         tmp_re                      = sym_re[k]*rs_re[m_prime] + sym_im[k]*rs_im[m_prime];
+            //         tmp_im                      = sym_im[k]*rs_re[m_prime] - sym_re[k]*rs_im[m_prime];
+            //         phy_struct->dl_ce_mag[i][k] = sqrt(tmp_re*tmp_re + tmp_im*tmp_im);
+            //         phy_struct->dl_ce_ang[i][k] = atan2f(tmp_im, tmp_re);
+
+            //         // Unwrap phase
+            //         if(j > 0)
+            //         {
+            //             wrap_phase(&phy_struct->dl_ce_ang[i][k], phy_struct->dl_ce_ang[i][k-6]);
+
+            //             // Linearly interpolate between CRSs
+            //             frac_mag = (phy_struct->dl_ce_mag[i][k] - phy_struct->dl_ce_mag[i][k-6])/6;
+            //             frac_ang = (phy_struct->dl_ce_ang[i][k] - phy_struct->dl_ce_ang[i][k-6])/6;
+            //             for(z=1; z<6; z++)
+            //             {
+            //                 phy_struct->dl_ce_mag[i][k-z] = phy_struct->dl_ce_mag[i][k-(z-1)] - frac_mag;
+            //                 phy_struct->dl_ce_ang[i][k-z] = phy_struct->dl_ce_ang[i][k-(z-1)] - frac_ang;
+            //             }
+            //         }
+
+            //         // Linearly interpolate before 1st CRS
+            //         if(j == 1)
+            //         {
+            //             for(z=1; z<((v[i] + v_shift)%6)+1; z++)
+            //             {
+            //                 phy_struct->dl_ce_mag[i][k-6-z] = phy_struct->dl_ce_mag[i][k-6-(z-1)] - frac_mag;
+            //                 phy_struct->dl_ce_ang[i][k-6-z] = phy_struct->dl_ce_ang[i][k-6-(z-1)] - frac_ang;
+            //             }
+            //         }
+            //     }
+
+            //     // Linearly interpolate after last CRS
+            //     for(z=1; z<(5-(v[i] + v_shift)%6)+1; z++)
+            //     {
+            //         phy_struct->dl_ce_mag[i][k+z] = phy_struct->dl_ce_mag[i][k+(z-1)] - frac_mag;
+            //         phy_struct->dl_ce_ang[i][k+z] = phy_struct->dl_ce_ang[i][k+(z-1)] - frac_ang;
+            //     }
+            // }
+
+            // //Linearly interpolate between symbols to construct all channel estimates
+            // if(N_sym == 3)
+            // {
+            //     #pragma omp parallel for private(z)
+            //     for(j=0; j<phy_struct->N_rb_dl*phy_struct->N_sc_rb_dl; j++)
+            //     {
+            //         // Construct symbol 1 and 8 channel estimates directly
+            //         subframe->rx_ce_re[p][1][j] = phy_struct->dl_ce_mag[0][j]*cosf(phy_struct->dl_ce_ang[0][j]);
+            //         subframe->rx_ce_im[p][1][j] = phy_struct->dl_ce_mag[0][j]*sinf(phy_struct->dl_ce_ang[0][j]);
+            //         subframe->rx_ce_re[p][8][j] = phy_struct->dl_ce_mag[1][j]*cosf(phy_struct->dl_ce_ang[1][j]);
+            //         subframe->rx_ce_im[p][8][j] = phy_struct->dl_ce_mag[1][j]*sinf(phy_struct->dl_ce_ang[1][j]);
+
+            //         // Interpolate for symbol 2, 3, 4, 5, 6, and 7 channel estimates
+            //         frac_mag = (phy_struct->dl_ce_mag[1][j] - phy_struct->dl_ce_mag[0][j])/7;
+            //         wrap_phase(&phy_struct->dl_ce_ang[1][j], phy_struct->dl_ce_ang[0][j]);
+            //         frac_ang = (phy_struct->dl_ce_ang[1][j] - phy_struct->dl_ce_ang[0][j]);
+            //         wrap_phase(&frac_ang, 0);
+            //         frac_ang /= 7;
+            //         ce_mag    = phy_struct->dl_ce_mag[1][j];
+            //         ce_ang    = phy_struct->dl_ce_ang[1][j];
+            //         for(z=7; z>1; z--)
+            //         {
+            //             ce_mag                      -= frac_mag;
+            //             ce_ang                      -= frac_ang;
+            //             subframe->rx_ce_re[p][z][j]  = ce_mag*cosf(ce_ang);
+            //             subframe->rx_ce_im[p][z][j]  = ce_mag*sinf(ce_ang);
+            //         }
+
+            //         // Interpolate for symbol 0 channel estimate
+            //         // FIXME: Use previous slot to do this correctly
+            //         ce_mag                      = phy_struct->dl_ce_mag[0][j] - frac_mag;
+            //         ce_ang                      = phy_struct->dl_ce_ang[0][j] - frac_ang;
+            //         subframe->rx_ce_re[p][0][j] = ce_mag*cosf(ce_ang);
+            //         subframe->rx_ce_im[p][0][j] = ce_mag*sinf(ce_ang);
+
+            //         // Interpolate for symbol 9, 10, 11, 12, and 13 channel estimates
+            //         frac_mag = (phy_struct->dl_ce_mag[2][j] - phy_struct->dl_ce_mag[1][j])/7;
+            //         wrap_phase(&phy_struct->dl_ce_ang[2][j], phy_struct->dl_ce_ang[1][j]);
+            //         frac_ang = (phy_struct->dl_ce_ang[2][j] - phy_struct->dl_ce_ang[1][j]);
+            //         wrap_phase(&frac_ang, 0);
+            //         frac_ang /= 7;
+            //         ce_mag    = phy_struct->dl_ce_mag[2][j] - frac_mag;
+            //         ce_ang    = phy_struct->dl_ce_ang[2][j] - frac_ang;
+            //         for(z=13; z>8; z--)
+            //         {
+            //             ce_mag                      -= frac_mag;
+            //             ce_ang                      -= frac_ang;
+            //             subframe->rx_ce_re[p][z][j]  = ce_mag*cosf(ce_ang);
+            //             subframe->rx_ce_im[p][z][j]  = ce_mag*sinf(ce_ang);
+            //         }
+            //     }
+            // }else{
+            //     #pragma omp parallel for private(z)
+            //     for(j=0; j<phy_struct->N_rb_dl*phy_struct->N_sc_rb_dl; j++)
+            //     {
+            //         // Construct symbol 0, 4, 7, and 11 channel estimates directly
+                    
+            //         subframe->rx_ce_re[p][0][j]  = phy_struct->dl_ce_mag[0][j]*cosf(phy_struct->dl_ce_ang[0][j]);
+            //         subframe->rx_ce_im[p][0][j]  = phy_struct->dl_ce_mag[0][j]*sinf(phy_struct->dl_ce_ang[0][j]);
+            //         subframe->rx_ce_re[p][4][j]  = phy_struct->dl_ce_mag[1][j]*cosf(phy_struct->dl_ce_ang[1][j]);
+            //         subframe->rx_ce_im[p][4][j]  = phy_struct->dl_ce_mag[1][j]*sinf(phy_struct->dl_ce_ang[1][j]);
+            //         subframe->rx_ce_re[p][7][j]  = phy_struct->dl_ce_mag[2][j]*cosf(phy_struct->dl_ce_ang[2][j]);
+            //         subframe->rx_ce_im[p][7][j]  = phy_struct->dl_ce_mag[2][j]*sinf(phy_struct->dl_ce_ang[2][j]);
+            //         subframe->rx_ce_re[p][11][j] = phy_struct->dl_ce_mag[3][j]*cosf(phy_struct->dl_ce_ang[3][j]);
+            //         subframe->rx_ce_im[p][11][j] = phy_struct->dl_ce_mag[3][j]*sinf(phy_struct->dl_ce_ang[3][j]);
+            //         #pragma omp parallel sections
+            //         {
+            //             // Interpolate for symbol 1, 2, and 3 channel estimates
+            //             #pragma omp section
+            //             {   
+            //                 frac_mag = (phy_struct->dl_ce_mag[1][j] - phy_struct->dl_ce_mag[0][j])/4;
+            //                 wrap_phase(&phy_struct->dl_ce_ang[1][j], phy_struct->dl_ce_ang[0][j]);
+            //                 frac_ang = (phy_struct->dl_ce_ang[1][j] - phy_struct->dl_ce_ang[0][j]);
+            //                 wrap_phase(&frac_ang, 0);
+            //                 frac_ang /= 4;
+            //                 ce_mag    = phy_struct->dl_ce_mag[1][j];
+            //                 ce_ang    = phy_struct->dl_ce_ang[1][j];
+
+            //                 for(z=3; z>0; z--)
+            //                 {
+            //                     ce_mag                      -= frac_mag;
+            //                     ce_ang                      -= frac_ang;
+            //                     subframe->rx_ce_re[p][z][j]  = ce_mag*cosf(ce_ang);
+            //                     subframe->rx_ce_im[p][z][j]  = ce_mag*sinf(ce_ang);
+            //                 }
+            //             }
+            //             #pragma omp section
+            //             {
+            //                 // Interpolate for symbol 5 and 6 channel estimates
+            //                 frac_mag = (phy_struct->dl_ce_mag[2][j] - phy_struct->dl_ce_mag[1][j])/3;
+            //                 wrap_phase(&phy_struct->dl_ce_ang[2][j], phy_struct->dl_ce_ang[1][j]);
+            //                 frac_ang = (phy_struct->dl_ce_ang[2][j] - phy_struct->dl_ce_ang[1][j]);
+            //                 wrap_phase(&frac_ang, 0);
+            //                 frac_ang /= 3;
+            //                 ce_mag    = phy_struct->dl_ce_mag[2][j];
+            //                 ce_ang    = phy_struct->dl_ce_ang[2][j];
+                            
+            //                 for(z=6; z>4; z--)
+            //                 {
+            //                     ce_mag                      -= frac_mag;
+            //                     ce_ang                      -= frac_ang;
+            //                     subframe->rx_ce_re[p][z][j]  = ce_mag*cosf(ce_ang);
+            //                     subframe->rx_ce_im[p][z][j]  = ce_mag*sinf(ce_ang);
+            //                 }
+            //             }
+            //             #pragma omp section
+            //             {
+            //                 // Interpolate for symbol 8, 9, and 10 channel estimates
+            //                 frac_mag = (phy_struct->dl_ce_mag[3][j] - phy_struct->dl_ce_mag[2][j])/4;
+            //                 wrap_phase(&phy_struct->dl_ce_ang[3][j], phy_struct->dl_ce_ang[2][j]);
+            //                 frac_ang = (phy_struct->dl_ce_ang[3][j] - phy_struct->dl_ce_ang[2][j]);
+            //                 wrap_phase(&frac_ang, 0);
+            //                 frac_ang /= 4;
+            //                 ce_mag    = phy_struct->dl_ce_mag[3][j];
+            //                 ce_ang    = phy_struct->dl_ce_ang[3][j];
+                            
+            //                 for(z=10; z>7; z--)
+            //                 {
+            //                     ce_mag                      -= frac_mag;
+            //                     ce_ang                      -= frac_ang;
+            //                     subframe->rx_ce_re[p][z][j]  = ce_mag*cosf(ce_ang);
+            //                     subframe->rx_ce_im[p][z][j]  = ce_mag*sinf(ce_ang);
+            //                 }
+            //             }
+            //             #pragma omp section
+            //             {
+            //                 // Interpolate for symbol 12 and 13 channel estimates
+            //                 frac_mag = (phy_struct->dl_ce_mag[4][j] - phy_struct->dl_ce_mag[3][j])/3;
+            //                 wrap_phase(&phy_struct->dl_ce_ang[4][j], phy_struct->dl_ce_ang[3][j]);
+            //                 frac_ang = (phy_struct->dl_ce_ang[4][j] - phy_struct->dl_ce_ang[3][j]);
+            //                 wrap_phase(&frac_ang, 0);
+            //                 frac_ang /= 3;
+            //                 ce_mag    = phy_struct->dl_ce_mag[4][j];
+            //                 ce_ang    = phy_struct->dl_ce_ang[4][j];
+                            
+            //                 for(z=13; z>11; z--)
+            //                 {
+            //                     ce_mag                      -= frac_mag;
+            //                     ce_ang                      -= frac_ang;
+            //                     subframe->rx_ce_re[p][z][j]  = ce_mag*cosf(ce_ang);
+            //                     subframe->rx_ce_im[p][z][j]  = ce_mag*sinf(ce_ang);
+            //                 }
+            //             }
+            //         }
+            //     }
+            // }
+
+            /* Chia-Hao Chang's Version **********************************/
+            // Subcarrier index    
+            float frac_re;
+            float frac_im;
+
             #pragma omp parallel for private(j, z)
             for(i=0; i<N_sym; i++)
             {
-                sym_re = &subframe->rx_symb_re[sym[i]][0];
-                sym_im = &subframe->rx_symb_im[sym[i]][0];
-                rs_re  = &phy_struct->dl_ce_crs_re[sym[i]][0];
-                rs_im  = &phy_struct->dl_ce_crs_im[sym[i]][0];
+                float* sym_re = &subframe->rx_symb_re[sym[i]][0];
+                float* sym_im = &subframe->rx_symb_im[sym[i]][0];
+                float* rs_re  = &phy_struct->dl_ce_crs_re[sym[i]][0];
+                float* rs_im  = &phy_struct->dl_ce_crs_im[sym[i]][0];
 
-                for(j=0; j<2*phy_struct->N_rb_dl; j++)
+                #pragma omp parallel for
+                for(int j=0; j<2*phy_struct->N_rb_dl; j++)
                 {
-                    k                           = 6*j + (v[i] + v_shift)%6;
-                    m_prime                     = j + LIBLTE_PHY_N_RB_DL_MAX - phy_struct->N_rb_dl;
-                    tmp_re                      = sym_re[k]*rs_re[m_prime] + sym_im[k]*rs_im[m_prime];
-                    tmp_im                      = sym_im[k]*rs_re[m_prime] - sym_re[k]*rs_im[m_prime];
-                    phy_struct->dl_ce_mag[i][k] = sqrt(tmp_re*tmp_re + tmp_im*tmp_im);
-                    phy_struct->dl_ce_ang[i][k] = atan2f(tmp_im, tmp_re);
+                    k               = 6*j + (v[i] + v_shift)%6;
+                    m_prime         = j + LIBLTE_PHY_N_RB_DL_MAX - phy_struct->N_rb_dl;
+                    
+                    // Chanenl gain
+                    subframe->rx_ce_re[p][sym[i]][k] = sym_re[k]*rs_re[m_prime] + sym_im[k]*rs_im[m_prime];
+                    subframe->rx_ce_im[p][sym[i]][k] = sym_im[k]*rs_re[m_prime] - sym_re[k]*rs_im[m_prime];
+                    
+                    //phy_struct->dl_ce_mag[i][k] = sqrt(tmp_re*tmp_re + tmp_im*tmp_im);
+                    //phy_struct->dl_ce_ang[i][k] = atan2f(tmp_im, tmp_re);
 
                     // Unwrap phase
                     if(j > 0)
                     {
-                        wrap_phase(&phy_struct->dl_ce_ang[i][k], phy_struct->dl_ce_ang[i][k-6]);
+                        //wrap_phase(&phy_struct->dl_ce_ang[i][k], phy_struct->dl_ce_ang[i][k-6]);
 
                         // Linearly interpolate between CRSs
-                        frac_mag = (phy_struct->dl_ce_mag[i][k] - phy_struct->dl_ce_mag[i][k-6])/6;
-                        frac_ang = (phy_struct->dl_ce_ang[i][k] - phy_struct->dl_ce_ang[i][k-6])/6;
+                        frac_re = (subframe->rx_ce_re[p][sym[i]][k] - subframe->rx_ce_re[p][sym[i]][k-6])/6;
+                        frac_im = (subframe->rx_ce_im[p][sym[i]][k] - subframe->rx_ce_im[p][sym[i]][k-6])/6;
+                        
+                        #pragma omp parallel for
                         for(z=1; z<6; z++)
                         {
-                            phy_struct->dl_ce_mag[i][k-z] = phy_struct->dl_ce_mag[i][k-(z-1)] - frac_mag;
-                            phy_struct->dl_ce_ang[i][k-z] = phy_struct->dl_ce_ang[i][k-(z-1)] - frac_ang;
+                            subframe->rx_ce_re[p][sym[i]][k-z] = subframe->rx_ce_re[p][sym[i]][k-(z-1)]-frac_re;
+                            subframe->rx_ce_im[p][sym[i]][k-z] = subframe->rx_ce_im[p][sym[i]][k-(z-1)]-frac_im;
+                            //phy_struct->dl_ce_mag[i][k-z] = phy_struct->dl_ce_mag[i][k-(z-1)] - frac_mag;
+                            //phy_struct->dl_ce_ang[i][k-z] = phy_struct->dl_ce_ang[i][k-(z-1)] - frac_ang;
                         }
                     }
 
                     // Linearly interpolate before 1st CRS
                     if(j == 1)
                     {
+                        #pragma omp parallel for
                         for(z=1; z<((v[i] + v_shift)%6)+1; z++)
                         {
-                            phy_struct->dl_ce_mag[i][k-6-z] = phy_struct->dl_ce_mag[i][k-6-(z-1)] - frac_mag;
-                            phy_struct->dl_ce_ang[i][k-6-z] = phy_struct->dl_ce_ang[i][k-6-(z-1)] - frac_ang;
+                            subframe->rx_ce_re[p][sym[i]][k-6-z] = subframe->rx_ce_re[p][sym[i]][k-6-(z-1)]-frac_re;
+                            subframe->rx_ce_im[p][sym[i]][k-6-z] = subframe->rx_ce_im[p][sym[i]][k-6-(z-1)]-frac_im;
+                            //phy_struct->dl_ce_mag[i][k-6-z] = phy_struct->dl_ce_mag[i][k-6-(z-1)] - frac_mag;
+                            //phy_struct->dl_ce_ang[i][k-6-z] = phy_struct->dl_ce_ang[i][k-6-(z-1)] - frac_ang;
                         }
                     }
                 }
 
                 // Linearly interpolate after last CRS
-                for(z=1; z<(5-(v[i] + v_shift)%6)+1; z++)
+                #pragma omp parallel for
+                for(int z=1; z<(5-(v[i] + v_shift)%6)+1; z++)
                 {
-                    phy_struct->dl_ce_mag[i][k+z] = phy_struct->dl_ce_mag[i][k+(z-1)] - frac_mag;
-                    phy_struct->dl_ce_ang[i][k+z] = phy_struct->dl_ce_ang[i][k+(z-1)] - frac_ang;
+                    subframe->rx_ce_re[p][sym[i]][k+z] = subframe->rx_ce_re[p][sym[i]][k+(z-1)]-frac_re;
+                    subframe->rx_ce_im[p][sym[i]][k+z] = subframe->rx_ce_im[p][sym[i]][k+(z-1)]-frac_im;
+
+                    //phy_struct->dl_ce_mag[i][k+z] = phy_struct->dl_ce_mag[i][k+(z-1)] - frac_mag;
+                    //phy_struct->dl_ce_ang[i][k+z] = phy_struct->dl_ce_ang[i][k+(z-1)] - frac_ang;
                 }
             }
 
-            // Linearly interpolate between symbols to construct all channel estimates
-            if(N_sym == 3)
+            // Symbol index
+            if(N_sym==5)
             {
-                #pragma omp parallel for private(z)
-                for(j=0; j<phy_struct->N_rb_dl*phy_struct->N_sc_rb_dl; j++)
+                #pragma omp parallel for 
+                for(int j=0; j<phy_struct->N_rb_dl*phy_struct->N_sc_rb_dl; j++)
                 {
-                    // Construct symbol 1 and 8 channel estimates directly
-                    subframe->rx_ce_re[p][1][j] = phy_struct->dl_ce_mag[0][j]*cosf(phy_struct->dl_ce_ang[0][j]);
-                    subframe->rx_ce_im[p][1][j] = phy_struct->dl_ce_mag[0][j]*sinf(phy_struct->dl_ce_ang[0][j]);
-                    subframe->rx_ce_re[p][8][j] = phy_struct->dl_ce_mag[1][j]*cosf(phy_struct->dl_ce_ang[1][j]);
-                    subframe->rx_ce_im[p][8][j] = phy_struct->dl_ce_mag[1][j]*sinf(phy_struct->dl_ce_ang[1][j]);
-
-                    // Interpolate for symbol 2, 3, 4, 5, 6, and 7 channel estimates
-                    frac_mag = (phy_struct->dl_ce_mag[1][j] - phy_struct->dl_ce_mag[0][j])/7;
-                    wrap_phase(&phy_struct->dl_ce_ang[1][j], phy_struct->dl_ce_ang[0][j]);
-                    frac_ang = (phy_struct->dl_ce_ang[1][j] - phy_struct->dl_ce_ang[0][j]);
-                    wrap_phase(&frac_ang, 0);
-                    frac_ang /= 7;
-                    ce_mag    = phy_struct->dl_ce_mag[1][j];
-                    ce_ang    = phy_struct->dl_ce_ang[1][j];
-                    for(z=7; z>1; z--)
+                    // Construct symbol 0, 4, 7, and 11 channel estimates directly        
+                    #pragma omp parallel sections
                     {
-                        ce_mag                      -= frac_mag;
-                        ce_ang                      -= frac_ang;
-                        subframe->rx_ce_re[p][z][j]  = ce_mag*cosf(ce_ang);
-                        subframe->rx_ce_im[p][z][j]  = ce_mag*sinf(ce_ang);
-                    }
+                        // Interpolate for symbol 1, 2, and 3 channel estimates
+                        #pragma omp section
+                        {   
+                            float frac_re_1  = (subframe->rx_ce_re[p][4][j]-subframe->rx_ce_re[p][0][j])/4;
+                            float frac_im_1  = (subframe->rx_ce_im[p][4][j]-subframe->rx_ce_im[p][0][j])/4;
 
-                    // Interpolate for symbol 0 channel estimate
-                    // FIXME: Use previous slot to do this correctly
-                    ce_mag                      = phy_struct->dl_ce_mag[0][j] - frac_mag;
-                    ce_ang                      = phy_struct->dl_ce_ang[0][j] - frac_ang;
-                    subframe->rx_ce_re[p][0][j] = ce_mag*cosf(ce_ang);
-                    subframe->rx_ce_im[p][0][j] = ce_mag*sinf(ce_ang);
-
-                    // Interpolate for symbol 9, 10, 11, 12, and 13 channel estimates
-                    frac_mag = (phy_struct->dl_ce_mag[2][j] - phy_struct->dl_ce_mag[1][j])/7;
-                    wrap_phase(&phy_struct->dl_ce_ang[2][j], phy_struct->dl_ce_ang[1][j]);
-                    frac_ang = (phy_struct->dl_ce_ang[2][j] - phy_struct->dl_ce_ang[1][j]);
-                    wrap_phase(&frac_ang, 0);
-                    frac_ang /= 7;
-                    ce_mag    = phy_struct->dl_ce_mag[2][j] - frac_mag;
-                    ce_ang    = phy_struct->dl_ce_ang[2][j] - frac_ang;
-                    for(z=13; z>8; z--)
-                    {
-                        ce_mag                      -= frac_mag;
-                        ce_ang                      -= frac_ang;
-                        subframe->rx_ce_re[p][z][j]  = ce_mag*cosf(ce_ang);
-                        subframe->rx_ce_im[p][z][j]  = ce_mag*sinf(ce_ang);
-                    }
-                }
-            }else{
-                #pragma omp parallel for private(z)
-                for(j=0; j<phy_struct->N_rb_dl*phy_struct->N_sc_rb_dl; j++)
-                {
-                    // Construct symbol 0, 4, 7, and 11 channel estimates directly
-                    subframe->rx_ce_re[p][0][j]  = phy_struct->dl_ce_mag[0][j]*cosf(phy_struct->dl_ce_ang[0][j]);
-                    subframe->rx_ce_im[p][0][j]  = phy_struct->dl_ce_mag[0][j]*sinf(phy_struct->dl_ce_ang[0][j]);
-                    subframe->rx_ce_re[p][4][j]  = phy_struct->dl_ce_mag[1][j]*cosf(phy_struct->dl_ce_ang[1][j]);
-                    subframe->rx_ce_im[p][4][j]  = phy_struct->dl_ce_mag[1][j]*sinf(phy_struct->dl_ce_ang[1][j]);
-                    subframe->rx_ce_re[p][7][j]  = phy_struct->dl_ce_mag[2][j]*cosf(phy_struct->dl_ce_ang[2][j]);
-                    subframe->rx_ce_im[p][7][j]  = phy_struct->dl_ce_mag[2][j]*sinf(phy_struct->dl_ce_ang[2][j]);
-                    subframe->rx_ce_re[p][11][j] = phy_struct->dl_ce_mag[3][j]*cosf(phy_struct->dl_ce_ang[3][j]);
-                    subframe->rx_ce_im[p][11][j] = phy_struct->dl_ce_mag[3][j]*sinf(phy_struct->dl_ce_ang[3][j]);
-
-                    // Interpolate for symbol 1, 2, and 3 channel estimates
-                    frac_mag = (phy_struct->dl_ce_mag[1][j] - phy_struct->dl_ce_mag[0][j])/4;
-                    wrap_phase(&phy_struct->dl_ce_ang[1][j], phy_struct->dl_ce_ang[0][j]);
-                    frac_ang = (phy_struct->dl_ce_ang[1][j] - phy_struct->dl_ce_ang[0][j]);
-                    wrap_phase(&frac_ang, 0);
-                    frac_ang /= 4;
-                    ce_mag    = phy_struct->dl_ce_mag[1][j];
-                    ce_ang    = phy_struct->dl_ce_ang[1][j];
-                    for(z=3; z>0; z--)
-                    {
-                        ce_mag                      -= frac_mag;
-                        ce_ang                      -= frac_ang;
-                        subframe->rx_ce_re[p][z][j]  = ce_mag*cosf(ce_ang);
-                        subframe->rx_ce_im[p][z][j]  = ce_mag*sinf(ce_ang);
-                    }
-
-                    // Interpolate for symbol 5 and 6 channel estimates
-                    frac_mag = (phy_struct->dl_ce_mag[2][j] - phy_struct->dl_ce_mag[1][j])/3;
-                    wrap_phase(&phy_struct->dl_ce_ang[2][j], phy_struct->dl_ce_ang[1][j]);
-                    frac_ang = (phy_struct->dl_ce_ang[2][j] - phy_struct->dl_ce_ang[1][j]);
-                    wrap_phase(&frac_ang, 0);
-                    frac_ang /= 3;
-                    ce_mag    = phy_struct->dl_ce_mag[2][j];
-                    ce_ang    = phy_struct->dl_ce_ang[2][j];
-                    for(z=6; z>4; z--)
-                    {
-                        ce_mag                      -= frac_mag;
-                        ce_ang                      -= frac_ang;
-                        subframe->rx_ce_re[p][z][j]  = ce_mag*cosf(ce_ang);
-                        subframe->rx_ce_im[p][z][j]  = ce_mag*sinf(ce_ang);
-                    }
-
-                    // Interpolate for symbol 8, 9, and 10 channel estimates
-                    frac_mag = (phy_struct->dl_ce_mag[3][j] - phy_struct->dl_ce_mag[2][j])/4;
-                    wrap_phase(&phy_struct->dl_ce_ang[3][j], phy_struct->dl_ce_ang[2][j]);
-                    frac_ang = (phy_struct->dl_ce_ang[3][j] - phy_struct->dl_ce_ang[2][j]);
-                    wrap_phase(&frac_ang, 0);
-                    frac_ang /= 4;
-                    ce_mag    = phy_struct->dl_ce_mag[3][j];
-                    ce_ang    = phy_struct->dl_ce_ang[3][j];
-                    for(z=10; z>7; z--)
-                    {
-                        ce_mag                      -= frac_mag;
-                        ce_ang                      -= frac_ang;
-                        subframe->rx_ce_re[p][z][j]  = ce_mag*cosf(ce_ang);
-                        subframe->rx_ce_im[p][z][j]  = ce_mag*sinf(ce_ang);
-                    }
-
-                    // Interpolate for symbol 12 and 13 channel estimates
-                    frac_mag = (phy_struct->dl_ce_mag[4][j] - phy_struct->dl_ce_mag[3][j])/3;
-                    wrap_phase(&phy_struct->dl_ce_ang[4][j], phy_struct->dl_ce_ang[3][j]);
-                    frac_ang = (phy_struct->dl_ce_ang[4][j] - phy_struct->dl_ce_ang[3][j]);
-                    wrap_phase(&frac_ang, 0);
-                    frac_ang /= 3;
-                    ce_mag    = phy_struct->dl_ce_mag[4][j];
-                    ce_ang    = phy_struct->dl_ce_ang[4][j];
-                    for(z=13; z>11; z--)
-                    {
-                        ce_mag                      -= frac_mag;
-                        ce_ang                      -= frac_ang;
-                        subframe->rx_ce_re[p][z][j]  = ce_mag*cosf(ce_ang);
-                        subframe->rx_ce_im[p][z][j]  = ce_mag*sinf(ce_ang);
+                            #pragma omp parallel for
+                            for(int z=3; z>0; z--)
+                            {
+                                subframe->rx_ce_re[p][z][j]  = subframe->rx_ce_re[p][z+1][j] - frac_re_1;
+                                subframe->rx_ce_im[p][z][j]  = subframe->rx_ce_im[p][z+1][j] - frac_im_1;
+                            }
+                        }
+                        #pragma omp section
+                        {
+                            // Interpolate for symbol 5 and 6 channel estimates
+                            float frac_re_2  = (subframe->rx_ce_re[p][7][j]-subframe->rx_ce_re[p][4][j])/3;
+                            float frac_im_2  = (subframe->rx_ce_im[p][7][j]-subframe->rx_ce_im[p][4][j])/3;
+                            
+                            #pragma omp parallel for
+                            for(int z=6; z>4; z--)
+                            {
+                                subframe->rx_ce_re[p][z][j]  = subframe->rx_ce_re[p][z+1][j] - frac_re_2;
+                                subframe->rx_ce_im[p][z][j]  = subframe->rx_ce_im[p][z+1][j] - frac_im_2;
+                            }
+                        }
+                        #pragma omp section
+                        {
+                            // Interpolate for symbol 8, 9, and 10 channel estimates
+                            float frac_re_3  = (subframe->rx_ce_re[p][11][j]-subframe->rx_ce_re[p][7][j])/4;
+                            float frac_im_3  = (subframe->rx_ce_im[p][11][j]-subframe->rx_ce_im[p][7][j])/4;
+                            
+                            #pragma omp parallel for
+                            for(int z=10; z>7; z--)
+                            {
+                                subframe->rx_ce_re[p][z][j]  = subframe->rx_ce_re[p][z+1][j] - frac_re_3;
+                                subframe->rx_ce_im[p][z][j]  = subframe->rx_ce_im[p][z+1][j] - frac_im_3;
+                            }
+                        }
+                        #pragma omp section
+                        {
+                            // Interpolate for symbol 12 and 13 channel estimates
+                            float frac_re_4  = (subframe->rx_ce_re[p][14][j]-subframe->rx_ce_re[p][11][j])/3;
+                            float frac_im_4  = (subframe->rx_ce_im[p][14][j]-subframe->rx_ce_im[p][11][j])/3;
+                            
+                            #pragma omp parallel for
+                            for(int z=13; z>11; z--)
+                            {
+                                subframe->rx_ce_re[p][z][j]  = subframe->rx_ce_re[p][z+1][j] - frac_re_4;
+                                subframe->rx_ce_im[p][z][j]  = subframe->rx_ce_im[p][z+1][j] - frac_im_4;
+                            }
+                        }
                     }
                 }
             }
+            /*************************************************************/
         }
+        cerr << ANSI_COLOR_RED << "\t\t\tChannel Estimation total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;   
+        cerr << ANSI_COLOR_RESET;
 
         err = LIBLTE_SUCCESS;
     }
@@ -11181,12 +11517,15 @@ void generate_pss(uint32  N_id_2,
     }else{
         root_idx = 34;
     }
-
+    
+    #pragma omp parallel for
     for(i=0; i<31; i++)
     {
         pss_re[i] = cosf(-M_PI*root_idx*i*(i+1)/63);
         pss_im[i] = sinf(-M_PI*root_idx*i*(i+1)/63);
     }
+
+    #pragma omp parallel for
     for(i=31; i<62; i++)
     {
         pss_re[i] = cosf(-M_PI*root_idx*(i+1)*(i+2)/63);
@@ -11231,6 +11570,7 @@ void generate_sss(LIBLTE_PHY_STRUCT *phy_struct,
         phy_struct->sss_x_s_tilda[i+5] = (phy_struct->sss_x_s_tilda[i+2] +
                                           phy_struct->sss_x_s_tilda[i]) % 2;
     }
+    #pragma omp parallel for
     for(i=0; i<31; i++)
     {
         phy_struct->sss_s_tilda[i] = 1 - 2*phy_struct->sss_x_s_tilda[i];
@@ -11244,6 +11584,7 @@ void generate_sss(LIBLTE_PHY_STRUCT *phy_struct,
         phy_struct->sss_x_c_tilda[i+5] = (phy_struct->sss_x_c_tilda[i+3] +
                                           phy_struct->sss_x_c_tilda[i]) % 2;
     }
+    #pragma omp parallel for
     for(i=0; i<31; i++)
     {
         phy_struct->sss_c_tilda[i] = 1 - 2*phy_struct->sss_x_c_tilda[i];
@@ -11259,6 +11600,7 @@ void generate_sss(LIBLTE_PHY_STRUCT *phy_struct,
                                           phy_struct->sss_x_z_tilda[i+1] +
                                           phy_struct->sss_x_z_tilda[i]) % 2;
     }
+    #pragma omp parallel for
     for(i=0; i<31; i++)
     {
         phy_struct->sss_z_tilda[i] = 1 - 2*phy_struct->sss_x_z_tilda[i];
@@ -11276,6 +11618,7 @@ void generate_sss(LIBLTE_PHY_STRUCT *phy_struct,
     memcpy(phy_struct->sss_s0_m0_Chang[30], phy_struct->sss_s1_m1_Chang[30], 31);
 
     // Generate c0 and c1
+    #pragma omp parallel for
     for(i=0; i<32; i++)
     {
         phy_struct->sss_c0[i] = phy_struct->sss_c_tilda[(i + N_id_2) % 31];
@@ -11283,6 +11626,7 @@ void generate_sss(LIBLTE_PHY_STRUCT *phy_struct,
     }
 
     // Generate z1_m0 and z1_m1
+    #pragma omp parallel for
     for(i=0; i<31; i++)
     {
         phy_struct->sss_z1_m0[i] = phy_struct->sss_z_tilda[(i + (m0 % 8)) % 31];
@@ -11294,6 +11638,7 @@ void generate_sss(LIBLTE_PHY_STRUCT *phy_struct,
     memcpy(phy_struct->sss_z1_m0_Chang[30], phy_struct->sss_z1_m1_Chang[30], 31);
 
     // Generate SSS
+    #pragma omp parallel for
     for(i=0; i<31; i++)
     {
         sss_re_0[2*i]   = phy_struct->sss_s0_m0[i]*phy_struct->sss_c0[i];
@@ -15850,7 +16195,7 @@ void dci_0_pack(LIBLTE_PHY_ALLOCATION_STRUCT    *alloc,
     value_2_bits(alloc->ndi, &dci, 1);
 
     // TPC command
-    value_2_bits(alloc->tpc, &dci, 2);
+    value_2_bits(alloc->rv_idx, &dci, 2);
 
     // Cyclic shift
     value_2_bits(0, &dci, 3);
@@ -15940,7 +16285,7 @@ void dci_0_unpack(uint8                           *in_bits,
     alloc->ndi = bits_2_value(&dci, 1);
 
     // TPC command
-    alloc->tpc = bits_2_value(&dci, 2);
+    alloc->rv_idx = bits_2_value(&dci, 2);
 
     // Cyclic shift
     alloc->cyclic_shift = bits_2_value(&dci, 3);
@@ -16969,7 +17314,7 @@ LIBLTE_ERROR_ENUM liblte_phy_pucch_formats_1_1a_1b_encode(LIBLTE_PHY_STRUCT     
     uint32 N_PUCCH_SF       = 4;  /// Fixed by Chia-Hao Chang, only normal CP
     uint32 n_CCE            = 0;  /// Fixed by Chia-Hao Chang, it is the lowest CCE index from own PDCCH
     uint32 N_1_PUCCH        = 0;  /// Fixed by Chia-Hao Chang according to SIB-2
-    uint32 n_1_p0_PUCCH     = n_CCE + N_1_PUCCH; /// Fixed due to above two...
+    uint32 n_1_p0_PUCCH     = n_CCE + N_1_PUCCH; /// Fixed due to above two..., 36.331 PUCCH-Config
     uint32 N_ul_symb        = 7;
     uint32 N_RB_sc          = LIBLTE_PHY_N_SC_RB_UL;
     uint32 N_2_RB           = 0; /// Bandwidth of format 2/2a/2b

@@ -45,8 +45,9 @@
 #include "liblte_phy.h"
 #include <gnuradio/gr_complex.h>
 #include <uhd/usrp/multi_usrp.hpp>
+#include <uhd/usrp/subdev_spec.hpp>
 #include <boost/thread/mutex.hpp>
-
+#include <stdlib.h>
 /*******************************************************************************
                               DEFINES
 *******************************************************************************/
@@ -110,8 +111,20 @@ public:
     std::string get_clock_source(void);
     LTE_FDD_ENB_ERROR_ENUM set_clock_source(std::string source);
     uint32 get_sample_rate(void);
+    void set_sample_rate(uint32 _fs);
     void set_earfcns(int64 dl_earfcn, int64 ul_earfcn);
     void send(LTE_FDD_ENB_RADIO_TX_BUF_STRUCT *buf);
+
+    void wait_radio_thread(void);
+
+    uhd::tx_streamer::sptr              tx_stream;
+    uhd::rx_streamer::sptr              rx_stream;
+
+    // Buffer 
+    gr_complex       tx_buf[LIBLTE_PHY_N_SAMPS_PER_SUBFR_30_72MHZ];
+    gr_complex       rx_buf[LIBLTE_PHY_N_SAMPS_PER_SUBFR_30_72MHZ];
+    uhd::time_spec_t next_tx_ts;
+    uint32           fs;
 
 private:
     // Singleton
@@ -124,24 +137,23 @@ private:
     bool         started;
 
     // Radios
-    uhd::usrp::multi_usrp::sptr         usrp;
-    uhd::tx_streamer::sptr              tx_stream;
-    uhd::rx_streamer::sptr              rx_stream;
+    uhd::usrp::multi_usrp::sptr         usrp_0; // RX
+    uhd::usrp::multi_usrp::sptr         usrp_1; // TX
+    
     LTE_FDD_ENB_AVAILABLE_RADIOS_STRUCT available_radios;
     uint32                              selected_radio_idx;
 
     // Radio thread
     static void*     radio_thread_func(void *inputs);
     pthread_t        radio_thread;
-    gr_complex       tx_buf[LIBLTE_PHY_N_SAMPS_PER_SUBFR_30_72MHZ];
-    gr_complex       rx_buf[LIBLTE_PHY_N_SAMPS_PER_SUBFR_30_72MHZ];
-    uhd::time_spec_t next_tx_ts;
+    
+    
     std::string      clock_source;
     int64            N_ant;
     uint32           N_tx_samps;
     uint32           N_rx_samps;
     uint32           N_samps_per_subfr;
-    uint32           fs;
+    
     uint32           tx_gain;
     uint32           rx_gain;
     uint16           next_tx_current_tti;

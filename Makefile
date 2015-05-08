@@ -1,7 +1,9 @@
 PROG = BS
 PROG_Debug = Debug
 CC := g++
-CPPFLAGS = -g -I./liblte/hdr -I./hdr  -I./libtools/hdr -std=c++11 
+Opt = -O3
+CPPFLAGS = -g $(Opt) -I./liblte/hdr -I./hdr  -I./libtools/hdr -std=c++11 
+
 LIBS = -lm -lstdc++ -lfftw3f -lboost_system -lpthread \
        -lrt -lboost_thread -luhd -lboost_program_options
 
@@ -54,18 +56,18 @@ ECHO      = /bin/echo
 all:$(PROG) UE BS_mq UE_mq
 
 $(PROG):$(OBJS) 
-	$(CC) $(OBJS) $(LIBS) -o $@
+	$(CC) $(OBJS) $(LIBS) $(Opt) -o $@
 
 UE:UE.o LTE_UE.o liblte_phy.o liblte_common.o liblte_rrc.o LTE_message_queue.o
-	$(CC) UE.o LTE_UE.o liblte_phy.o liblte_common.o liblte_rrc.o LTE_message_queue.o $(LIBS) -g -o $@
+	$(CC) $(Opt) UE.o LTE_UE.o liblte_phy.o liblte_common.o liblte_rrc.o LTE_message_queue.o $(LIBS) -g -o $@
 
 #########################################################################################
 
 BS_mq:${OBJS_mq}
-	$(CC) $(OBJS_mq) $(LIBS) -o $@
+	$(CC) $(OBJS_mq) $(LIBS) $(Opt) -o $@
 
 UE_mq:UE_mq.o LTE_UE.o liblte_phy.o liblte_common.o liblte_rrc.o LTE_message_queue.o
-	$(CC) UE_mq.o LTE_UE.o liblte_phy.o liblte_common.o liblte_rrc.o LTE_message_queue.o $(LIBS) -g -o $@
+	$(CC) $(Opt) UE_mq.o LTE_UE.o liblte_phy.o liblte_common.o liblte_rrc.o LTE_message_queue.o $(LIBS) -g -o $@
 
 BS_mq.o:BS.cpp
 	$(CC) $(CPPFLAGS) -D MESSAGEQUEUE -c $< -o $@

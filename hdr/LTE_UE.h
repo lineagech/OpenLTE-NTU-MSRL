@@ -169,6 +169,11 @@ public:
     uint16           external_c_rnti;
 
     //static  Radio* instance;
+    float            sampling_freq;
+
+
+    uhd::tx_streamer::sptr              tx_stream;
+    uhd::rx_streamer::sptr              rx_stream;
 private:
     static  Radio* instance;
     Radio();
@@ -176,8 +181,7 @@ private:
     
     uhd::usrp::multi_usrp::sptr         usrp_0;
     uhd::usrp::multi_usrp::sptr         usrp_1;
-    uhd::tx_streamer::sptr              tx_stream;
-    uhd::rx_streamer::sptr              rx_stream;
+    
 
     uhd::device_addr_t  hint;
     uhd::device_addrs_t devs;
@@ -207,15 +211,16 @@ public:
 
     double  carrier_freq;
 
+    void    reset();
     int32   work(LTE_FDD_ENB_RADIO_RX_BUF_FOR_1_92MHZ frame);
     int32   handle_dl(float* i_recv_buf, float* q_recv_buf, int len);
     uint32  mq_execute(float* i_data, float* q_data, uint32 len);
 
 
     /*** Decode Process ***/
-    uint32  execute(float* i_data, float* q_data, uint32 len);
+     int32  execute(float* i_data, float* q_data, uint32 len);
     uint32  cell_search(float* i_data, float* q_data, uint32 len, uint32* neg_offset);
-    uint32  pbch_decoding(float* i_data, float* q_data, uint32 len);
+     int32  pbch_decoding(float* i_data, float* q_data, uint32 len);
     uint32  sib1_decoding(float* i_data, float* q_data, uint32 len);
     uint32  dlsch_decoding(float* i_data, float* q_data, uint32 len, uint32 subfr_num);
     uint32  pucch_encoding(float* i_data, float* q_data, uint32 subfr_num);
@@ -263,6 +268,7 @@ public:
     uint32                          time_to_op; // time to operate uplink or recv harq 
     bool                            get_ul_init(void){ return ul_init; }
     void                            set_ul_msg(void);
+    bool                            first_tran;
 
     // TS 36.321 5.3.2.2
     std::vector<LIBLTE_BIT_MSG_STRUCT> message;
@@ -298,8 +304,12 @@ public:
     LIBLTE_PHY_PDCCH_STRUCT                     pdcch;
 
 
-
+    // Uplink thread mutex 
     boost::mutex    ul_tx_mutex;
+
+    // USRP control 
+    uint32          more_samps;
+
     
 private:
     //friend LTE_FDD_DL_FS_API LTE_fdd_dl_fs_samp_buf_sptr LTE_fdd_dl_fs_make_samp_buf(size_t in_size_val);
@@ -367,6 +377,7 @@ private:
     bool                              sib7_expected;
     bool                              sib8_printed;
     bool                              sib8_expected;
+    bool                              sib_recv;
 
     // Helpers
     void init(void);
@@ -456,7 +467,16 @@ private:
 
     // Receiving state
     
-
+    // UL system information
+    uint32             prach_root_seq_idx       ;
+    uint32             prach_preamble_format    ;
+    uint32             prach_zczc               ;  
+    bool               prach_hs_flag            ;
+    uint8              group_assignment_pusch   ;
+    bool               group_hopping_enabled    ;
+    bool               sequence_hopping_enabled ;
+    uint8              cyclic_shift             ;
+    uint8              cyclic_shift_dci         ;
 };
 
 	

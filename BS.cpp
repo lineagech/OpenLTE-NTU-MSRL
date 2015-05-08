@@ -28,6 +28,7 @@ static LTE_fdd_enb_phy			*phy;
 static LTE_fdd_enb_interface 	*interface;
 static LTE_fdd_enb_cnfg_db 	    *cnfg_db;
 static LTE_fdd_enb_user_mgr     *user_mgr;
+static LTE_fdd_enb_radio        *radio;
 static MessageQueue             *mq;
 
 struct timespec                 sleep_time;
@@ -39,7 +40,28 @@ LTE_FDD_ENB_RADIO_RX_BUF_STRUCT         *rx_buf     ;
 /*******************************************************************************
                              FUNCTIONS
 *******************************************************************************/
+#ifdef MESSAGEQUEUE
+void UL_MQ_Chang()
+{
+    mq->ul_recv_from_mq(rx_buf->i_buf, rx_buf->q_buf, 1920);
+    auto start_time = chrono::high_resolution_clock::now();
+    phy->process_ul(rx_buf);
+    cerr<< ANSI_COLOR_MAGENTA << "\tUL Subframe total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
+    cerr<< ANSI_COLOR_RESET;
+    cerr<<"Recv one Subframe..."<<endl;
+}
+void DL_MQ_Chang()
+{
+    auto start_time = chrono::high_resolution_clock::now();
+    phy->process_dl(tx_buf);
+    cerr<< ANSI_COLOR_MAGENTA << "\tDL Subframe total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
+    cerr<< ANSI_COLOR_RESET;
 
+    mq->dl_send_to_mq(&tx_buf->i_buf[0][0], &tx_buf->q_buf[0][0], 1920);
+    cerr<<"Send one Subframe..."<<endl;
+
+}
+#endif /* MESSAGEQUEUE */                             
 
 //extern LTE_File lte_file_OFDM_symbol;
 
@@ -66,20 +88,31 @@ int main(int argc, char* argv[]){
 
     user_mgr->update_sys_info();
 
-    //user_mgr->set_dl_sched(LIBLTE_MAC_C_RNTI_START, 1, true, LIBLTE_PHY_CHAN_TYPE_DLSCH);
-    //user_mgr->set_dl_sched(LIBLTE_MAC_C_RNTI_START+1, 2, true, LIBLTE_PHY_CHAN_TYPE_DLSCH);
-
-#ifdef MESSAGEQUEUE
+#ifdef MESSAGEQUEUE 
     mq = MessageQueue::get_instance();
     // Test 
-    for(uint32 i=0; i<10; i++)
-    {
-        phy->process_dl(tx_buf);
-        mq->dl_send_to_mq(&tx_buf->i_buf[0][0], &tx_buf->q_buf[0][0], 1920);
-    }
     cerr<<"Send one Frame..."<<endl;
-    user_mgr->set_dl_sched(LIBLTE_MAC_C_RNTI_START, 11, true, LIBLTE_PHY_CHAN_TYPE_DLSCH);
-    user_mgr->set_dl_sched(LIBLTE_MAC_C_RNTI_START+1, 12, true, LIBLTE_PHY_CHAN_TYPE_ULSCH);
+    user_mgr->set_dl_sched(LIBLTE_MAC_C_RNTI_START, 1, true, LIBLTE_PHY_CHAN_TYPE_DLSCH);
+    user_mgr->set_dl_sched(LIBLTE_MAC_C_RNTI_START+1, 2, true, LIBLTE_PHY_CHAN_TYPE_ULSCH);
+
+    phy->process_ul(rx_buf);
+    phy->process_ul(rx_buf);
+
+    for(uint32 i=0; i<20; i++)
+    {
+        auto start_time = chrono::high_resolution_clock::now();
+        phy->process_dl(tx_buf);
+        cerr<< ANSI_COLOR_MAGENTA << "\tDL Subframe total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
+        cerr<< ANSI_COLOR_RESET;
+
+        mq->dl_send_to_mq(&tx_buf->i_buf[0][0], &tx_buf->q_buf[0][0], 1920);
+        phy->process_ul(rx_buf);
+
+        cerr << "\n--------------------------\n\n";
+    }
+
+    //mq->ul_recv_from_mq(rx_buf->i_buf, rx_buf->q_buf, 1920);
+    //phy->process_ul(rx_buf);
 
     cerr<<"Set DL Scheduling..."<<endl; 
     rx_buf->current_tti = 10;
@@ -88,20 +121,31 @@ int main(int argc, char* argv[]){
         cerr<<"Press Enter to Continue"<<endl;
         getchar();   
         
-        mq->ul_recv_from_mq(rx_buf->i_buf, rx_buf->q_buf, 1920);
-        phy->process_ul(rx_buf);
-        cerr<<"Recv one Subframe..."<<endl;
-
+        boost::thread UL_Chang(boost::bind(UL_MQ_Chang));
+        // mq->ul_recv_from_mq(rx_buf->i_buf, rx_buf->q_buf, 1920);
+        // phy->process_ul(rx_buf);
+        // cerr<<"Recv one Subframe..."<<endl;
         
-        phy->process_dl(tx_buf);
-        mq->dl_send_to_mq(&tx_buf->i_buf[0][0], &tx_buf->q_buf[0][0], 1920);
-        cerr<<"Send one Subframe..."<<endl;
-
-
+        boost::thread DL_Chang(boost::bind(DL_MQ_Chang));
+        // phy->process_dl(tx_buf);
+        // mq->dl_send_to_mq(&tx_buf->i_buf[0][0], &tx_buf->q_buf[0][0], 1920);
+        // cerr<<"Send one Subframe..."<<endl;
+        UL_Chang.join();
+        DL_Chang.join();
 
         rx_buf->current_tti++;
     }
-#endif /* MESSAGEQUEUE */
+#else /* MESSAGEQUEUE */
+    user_mgr->set_dl_sched(LIBLTE_MAC_C_RNTI_START, 1, true, LIBLTE_PHY_CHAN_TYPE_DLSCH);
+    user_mgr->set_dl_sched(LIBLTE_MAC_C_RNTI_START+1, 2, true, LIBLTE_PHY_CHAN_TYPE_ULSCH);
+    radio = LTE_fdd_enb_radio::get_instance();
+    radio->set_sample_rate(1.92*1e6);
+    
+    radio->start();
+    radio->wait_radio_thread();
+
+
+#endif 
 	cout<<"exit... \n";
 	exit(0);
 }

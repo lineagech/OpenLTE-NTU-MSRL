@@ -118,6 +118,10 @@ public:
     //boost::thread       dl_thread;
     boost::mutex        stream_mutex;
 
+
+    // intentional public data
+    LIBLTE_PHY_SUBFRAME_STRUCT         dl_subframe;
+
 private:
     LIBLTE_PHY_STRUCT *phy_struct;
     static LTE_fdd_enb_phy *instance;
@@ -128,7 +132,7 @@ private:
     LIBLTE_PHY_PCFICH_STRUCT           pcfich;
     LIBLTE_PHY_PHICH_STRUCT            phich[10];
     LIBLTE_PHY_PDCCH_STRUCT            pdcch;
-    LIBLTE_PHY_SUBFRAME_STRUCT         dl_subframe;
+    
     LIBLTE_BIT_MSG_STRUCT              dl_rrc_msg;
     uint32                             dl_current_tti;
     uint32                             last_rts_current_tti;
