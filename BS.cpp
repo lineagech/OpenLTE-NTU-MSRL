@@ -3,10 +3,15 @@
 /*******************************************************************************
                               INCLUDES
 *******************************************************************************/
-#include "liblte/hdr/liblte_phy.h"
-#include "hdr/LTE_fdd_enb_user_mgr.h"                              
+#include <boost/program_options.hpp>
+#include <boost/format.hpp>
+#include <boost/asio.hpp>
+
 #include "stdlib.h"
 #include "stdio.h"
+
+#include "liblte/hdr/liblte_phy.h"
+#include "hdr/LTE_fdd_enb_user_mgr.h"                              
 #include "LTE_file.h"
 #include "LTE_fdd_main.h"
 //#include "LTE_UE.h"
@@ -37,6 +42,9 @@ struct timespec                 time_rem;
 LTE_FDD_ENB_SYS_INFO_STRUCT 			sys_info 	;
 LTE_FDD_ENB_RADIO_TX_BUF_STRUCT 		*tx_buf 	;
 LTE_FDD_ENB_RADIO_RX_BUF_STRUCT         *rx_buf     ;
+
+namespace po = boost::program_options;
+boost::asio::io_service io_service;
 /*******************************************************************************
                              FUNCTIONS
 *******************************************************************************/
@@ -61,15 +69,67 @@ void DL_MQ_Chang()
     cerr<<"Send one Subframe..."<<endl;
 
 }
-#endif /* MESSAGEQUEUE */                             
+#endif /* MESSAGEQUEUE */
+
+void handler(const boost::system::error_code& error, int signal_number)
+{
+    if (!error)
+    {
+        // A signal occurred.
+        user_mgr = LTE_fdd_enb_user_mgr::get_instance();
+        user_mgr->cleanup();
+    }
+    getchar();
+    exit(0);
+}                             
 
 //extern LTE_File lte_file_OFDM_symbol;
 
 int main(int argc, char* argv[]){
 
-	interface 		= LTE_fdd_enb_interface::get_instance()	;
+    float sample_rate;
+	po::options_description desc("Allowed options");
+    desc.add_options()
+        ("help", "help message")
+        ("sample_rate", po::value<float>(&sample_rate)->default_value(1.92*1e6), "Sample Rate")
+        ;
+    po::variables_map vm;
+    po::store(po::parse_command_line(argc, argv, desc), vm);
+    po::notify(vm);
+    if(vm.count("help"))
+    {
+        std::cout << boost::format("Created by Chia-Hao Chang\n%s") % desc << std::endl;
+        return 1;
+    }
+
+    interface 		= LTE_fdd_enb_interface::get_instance()	;
 	user_mgr 		= LTE_fdd_enb_user_mgr::get_instance()	;
     phy             = LTE_fdd_enb_phy::get_instance()       ;
+
+
+
+
+
+    /********************* ****************************************/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    // Construct a signal set registered for process termination.
+    //boost::asio::signal_set signals(io_service, SIGINT, SIGTERM);
+
+    // Start an asynchronous wait for one of the signals to occur.
+    //signals.async_wait(handler);
 
 	tx_buf = new LTE_FDD_ENB_RADIO_TX_BUF_STRUCT;
     rx_buf = new LTE_FDD_ENB_RADIO_RX_BUF_STRUCT;
@@ -139,10 +199,10 @@ int main(int argc, char* argv[]){
     user_mgr->set_dl_sched(LIBLTE_MAC_C_RNTI_START, 1, true, LIBLTE_PHY_CHAN_TYPE_DLSCH);
     user_mgr->set_dl_sched(LIBLTE_MAC_C_RNTI_START+1, 2, true, LIBLTE_PHY_CHAN_TYPE_ULSCH);
     radio = LTE_fdd_enb_radio::get_instance();
-    radio->set_sample_rate(1.92*1e6);
+    radio->set_sample_rate(sample_rate);
     
     radio->start();
-    radio->wait_radio_thread();
+    //radio->wait_radio_thread();
 
 
 #endif 

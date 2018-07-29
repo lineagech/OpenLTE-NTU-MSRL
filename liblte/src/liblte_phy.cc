@@ -2326,7 +2326,15 @@ LIBLTE_ERROR_ENUM liblte_phy_init(LIBLTE_PHY_STRUCT  **phy_struct,
                                                                   FFTW_MEASURE);
 
 
-       
+        // PSS, SSS Lookup table
+        generate_pss(N_id_cell%3, (*phy_struct)->Gen_PSS_RE, (*phy_struct)->Gen_PSS_IM);
+        generate_sss(*phy_struct,
+                     N_id_cell/3,
+                     N_id_cell%3,
+                     &((*phy_struct)->sss_mod_re_0[0][0]),
+                     &((*phy_struct)->sss_mod_im_0[0][0]),
+                     &((*phy_struct)->sss_mod_re_5[0][0]),
+                     &((*phy_struct)->sss_mod_im_5[0][0]));
 
 
         /* Fixed by Chia-Hao Chang */
@@ -3071,13 +3079,22 @@ LIBLTE_ERROR_ENUM liblte_phy_pusch_channel_decode(LIBLTE_PHY_STRUCT            *
                             alloc->mod_type,
                             phy_struct->pusch_soft_bits,
                             &N_bits);
+
+        LTE_File UL_TX2("PUSCH_Equalized_IQ.dat", WRITE);
+        UL_TX2.record_OFDM(phy_struct->pusch_d_re, phy_struct->pusch_d_im, M_symb);
+        UL_TX2.close_file();
+        UL_TX2.~LTE_File();
+
         // FIXME: Only handling 1 codewords
         c_init = (alloc->rnti << 14) | (0 << 13) | (subframe->num << 9) | N_id_cell;
         generate_prs_c(c_init, N_bits, phy_struct->pusch_c);
+        
+        //#pragma omp parallel for
         for(i=0; i<N_bits; i++)
         {
             phy_struct->pusch_descramb_bits[i] = (float)phy_struct->pusch_soft_bits[i]*(1-2*(float)phy_struct->pusch_c[i]);
         }
+
         if(LIBLTE_PHY_MODULATION_TYPE_BPSK == alloc->mod_type)
         {
             Q_m = 1;
@@ -3169,7 +3186,6 @@ LIBLTE_ERROR_ENUM liblte_phy_generate_prach(LIBLTE_PHY_STRUCT *phy_struct,
                                                          +phy_struct->prach_prev_fft_im[idx+1]*phy_struct->prach_prev_fft_im[idx];
             phy_struct->prach_prev_fft_diff_corr_im[idx] = phy_struct->prach_prev_fft_re[idx+1]*phy_struct->prach_prev_fft_im[idx]
                                                          -phy_struct->prach_prev_fft_im[idx+1]*phy_struct->prach_prev_fft_re[idx];
-
         }
 
         fftwf_execute(phy_struct->prach_ifft_plan);
@@ -3513,137 +3529,101 @@ LIBLTE_ERROR_ENUM liblte_phy_detect_prach_Chang(LIBLTE_PHY_STRUCT *phy_struct,
         }
         fftwf_execute(phy_struct->prach_fft_plan);
         start = phy_struct->prach_phi + (K*k_0) + (K/2);
+
+        float prach_freq_domain_re[phy_struct->prach_T_fft];
+        float prach_freq_domain_im[phy_struct->prach_T_fft];
+        float prach_freq_domain_diff_re[phy_struct->prach_T_fft];
+        float prach_freq_domain_diff_im[phy_struct->prach_T_fft];
+        float prach_freq_domain_diff_n_re[phy_struct->prach_T_fft];
+        float prach_freq_domain_diff_n_im[phy_struct->prach_T_fft];
+        int   subcarrier_idx[phy_struct->prach_T_fft];
+
+        //#pragma omp parallel for
         for(i=0; i<phy_struct->prach_N_zc; i++)
         {
-            idx                           = (i+start+phy_struct->prach_T_fft/2)%phy_struct->prach_T_fft;
-            phy_struct->prach_x_hat_re[i] = phy_struct->prach_fft_out[idx][0]/(phy_struct->prach_T_fft);
-            phy_struct->prach_x_hat_im[i] = phy_struct->prach_fft_out[idx][1]/(phy_struct->prach_T_fft);
+            idx = (i+start+phy_struct->prach_T_fft/2)%phy_struct->prach_T_fft;
+            subcarrier_idx[idx] = 1;
         }
-
-        for(j=0; j<phy_struct->prach_N_zc; j++)
+        //#pragma omp parallel for
+        for(i=0; i<phy_struct->prach_T_fft; i++)
         {
-            phy_struct->prach_dft_in[j][0] = phy_struct->prach_x_hat_re[j];
-            phy_struct->prach_dft_in[j][1] = phy_struct->prach_x_hat_im[j];
-        }
-
-        float ideal_corr_re;
-        float ideal_corr_im;
-        float recv_corr_re;
-        float recv_corr_im;
-        float recv_abs_corr;
-        float abs_corr_re;
-        float abs_corr_im;
-        float abs_corr;
-        float distance;
-        float min_dis;
-        min_dis = FLT_MAX;
-        ave_val = 0;
-        max_val = 0;
-
-        ///  Modify in 2015/04/28, noted by Chia-Hao Chang
-
-        for(i=0; i<phy_struct->prach_N_x_u; i++)
-        {
-            abs_corr    = 0;
-            abs_corr_re = 0;
-            abs_corr_im = 0;
-            ave_val     = 0;
-            for(j=0; j<phy_struct->prach_T_fft-1; j++)
+            prach_freq_domain_re[i]         = phy_struct->prach_fft_out[i][0];
+            prach_freq_domain_im[i]         = phy_struct->prach_fft_out[i][1];
+            if(subcarrier_idx[i] != 1)
             {
-                // ideal_corr_re   = phy_struct->prach_x_u_v_re[i][j]*phy_struct->prach_x_u_v_re[i][j+1]
-                //                 + phy_struct->prach_x_u_v_im[i][j]*phy_struct->prach_x_u_v_im[i][j+1];
-                // ideal_corr_im   = phy_struct->prach_x_u_v_re[i][j]*phy_struct->prach_x_u_v_im[i][j+1]
-                //                 - phy_struct->prach_x_u_v_im[i][j]*phy_struct->prach_x_u_v_re[i][j+1]; 
-                recv_corr_re    = phy_struct->prach_fft_in[j+1][0]*phy_struct->prach_fft_in[j][0]
-                                + phy_struct->prach_fft_in[j+1][1]*phy_struct->prach_fft_in[j][1];             
-                recv_corr_im    = phy_struct->prach_fft_in[j+1][0]*phy_struct->prach_fft_in[j][1]
-                                - phy_struct->prach_fft_in[j+1][1]*phy_struct->prach_fft_in[j][0];
-                
-                recv_abs_corr   = sqrt(recv_corr_re*recv_corr_re+recv_corr_im*recv_corr_im);
-
-                abs_corr_re     += (recv_corr_re*phy_struct->prach_prev_fft_diff_corr_re[j]
-                                  + recv_corr_im*phy_struct->prach_prev_fft_diff_corr_im[j])/recv_abs_corr;
-                abs_corr_im     += (recv_corr_re*phy_struct->prach_prev_fft_diff_corr_im[j]
-                                  - recv_corr_im*phy_struct->prach_prev_fft_diff_corr_re[j])/recv_abs_corr;
-                
+                prach_freq_domain_re[i] = 0;
+                prach_freq_domain_im[i] = 0;
             }
-            distance = (abs_corr_re-838)*(abs_corr_re-838)+(abs_corr_im-0)*(abs_corr_im-0);
-            if(distance < min_dis)
-            {
-                max_root = i;
-                min_dis  = distance;
-            }
-            //ave_val = phy_struct->prach_N_zc;
         }
-
-
-        // idft 
-        fftwf_execute(phy_struct->prach_idft_plan);
-        for(j=0; j<phy_struct->prach_N_zc; j++)
+        //#pragma omp parallel for
+        for(i=0; i<phy_struct->prach_T_fft-1; i++)
         {
-            phy_struct->prach_dft_out[j][0] = phy_struct->prach_dft_out[j][0]/(phy_struct->prach_N_zc);
-            phy_struct->prach_dft_out[j][1] = phy_struct->prach_dft_out[j][1]/(phy_struct->prach_N_zc);
+            prach_freq_domain_diff_re[i] = prach_freq_domain_re[i+1]*prach_freq_domain_re[i]
+                                          +prach_freq_domain_im[i+1]*prach_freq_domain_im[i];
+            prach_freq_domain_diff_im[i] = prach_freq_domain_im[i+1]*prach_freq_domain_re[i]
+                                          -prach_freq_domain_re[i+1]*prach_freq_domain_im[i];
+            if(prach_freq_domain_diff_re[i]==0 && prach_freq_domain_diff_im[i]==0)
+            {
+                prach_freq_domain_diff_n_re[i] = 0;
+                prach_freq_domain_diff_n_im[i] = 0;
+            }else{
+                float tmp = sqrt(prach_freq_domain_diff_re[i]*prach_freq_domain_diff_re[i]
+                                +prach_freq_domain_diff_im[i]*prach_freq_domain_diff_im[i]);
+                prach_freq_domain_diff_n_re[i] = prach_freq_domain_diff_re[i]/tmp;
+                prach_freq_domain_diff_n_im[i] = prach_freq_domain_diff_im[i]/tmp;
+            }
         }
-        // Correlate with all available roots
 
+        // Generate golden diff corr for each preamble
+        float min_distance = FLT_MAX;
+        for(int preamble_idx=0; preamble_idx<64; preamble_idx++)
+        {
+            //#pragma omp parallel for
+            for(i=0; i<phy_struct->prach_N_zc; i++)
+            {
+                phy_struct->prach_dft_in[i][0] = phy_struct->prach_x_u_v_re[preamble_idx][i];
+                phy_struct->prach_dft_in[i][1] = phy_struct->prach_x_u_v_im[preamble_idx][i];
+            }
+            fftwf_execute(phy_struct->prach_dft_plan);
+            
+            start = phy_struct->prach_phi + (K*k_0) + (K/2);
+            //#pragma omp parallel for
+            for(i=0; i<phy_struct->prach_N_zc; i++)
+            {
+                idx                                = (i+start+phy_struct->prach_T_fft/2)%phy_struct->prach_T_fft;
+                phy_struct->prach_prev_fft_re[idx] = phy_struct->prach_dft_out[i][0];
+                phy_struct->prach_prev_fft_im[idx] = phy_struct->prach_dft_out[i][1];
+            }
+            //#pragma omp parallel for
+            for(i=0; i<phy_struct->prach_T_fft-1; i++)
+            {
+                phy_struct->prach_in_diff_re[i] = phy_struct->prach_prev_fft_re[i+1]*phy_struct->prach_prev_fft_re[i]
+                                                 +phy_struct->prach_prev_fft_im[i+1]*phy_struct->prach_prev_fft_im[i];
+                phy_struct->prach_in_diff_im[i] = phy_struct->prach_prev_fft_im[i+1]*phy_struct->prach_prev_fft_re[i]
+                                                 -phy_struct->prach_prev_fft_re[i+1]*phy_struct->prach_prev_fft_im[i];
+            }
 
-        
-        // for(i=0; i<phy_struct->prach_N_x_u; i++)
-        // {
-        //     abs_corr    = 0;
-        //     abs_corr_re = 0;
-        //     abs_corr_im = 0;
-        //     ave_val     = 0;
-        //     for(j=0; j<phy_struct->prach_N_zc-1; j++)
-        //     {
-        //         ideal_corr_re   = phy_struct->prach_x_u_v_re[i][j]*phy_struct->prach_x_u_v_re[i][j+1]
-        //                         + phy_struct->prach_x_u_v_im[i][j]*phy_struct->prach_x_u_v_im[i][j+1];
-        //         ideal_corr_im   = phy_struct->prach_x_u_v_re[i][j]*phy_struct->prach_x_u_v_im[i][j+1]
-        //                         - phy_struct->prach_x_u_v_im[i][j]*phy_struct->prach_x_u_v_re[i][j+1]; 
-        //         recv_corr_re    = phy_struct->prach_dft_out[j][0]*phy_struct->prach_dft_out[j+1][0]
-        //                         + phy_struct->prach_dft_out[j][1]*phy_struct->prach_dft_out[j+1][1];             
-        //         recv_corr_im    = phy_struct->prach_dft_out[j][0]*phy_struct->prach_dft_out[j+1][1]
-        //                         - phy_struct->prach_dft_out[j][1]*phy_struct->prach_dft_out[j+1][0];
-                
-        //         recv_abs_corr   = sqrt(recv_corr_re*recv_corr_re+recv_corr_im*recv_corr_im);
+            // sum of diff corr with received samples
+            float tmp_re=0;
+            float tmp_im=0;
+            for(i=0; i<phy_struct->prach_T_fft-1; i++)
+            {
+                tmp_re += prach_freq_domain_diff_n_re[i]*phy_struct->prach_in_diff_re[i]
+                         +prach_freq_domain_diff_n_im[i]*phy_struct->prach_in_diff_im[i];
+                tmp_im += prach_freq_domain_diff_n_im[i]*phy_struct->prach_in_diff_re[i]
+                         -prach_freq_domain_diff_n_re[i]*phy_struct->prach_in_diff_im[i];
+            }
 
-        //         abs_corr_re     += (ideal_corr_re*recv_corr_re
-        //                           + ideal_corr_im*recv_corr_im)/recv_abs_corr;
-        //         abs_corr_im     += (ideal_corr_re*recv_corr_im
-        //                           - ideal_corr_im*recv_corr_re)/recv_abs_corr;
-        //     }
-        //     distance = (abs_corr_re-838)*(abs_corr_re-838)+(abs_corr_im-0)*(abs_corr_im-0);
-        //     if(distance < min_dis)
-        //     {
-        //         max_root = i;
-        //         min_dis  = distance;
-        //     }
-        //     //ave_val = phy_struct->prach_N_zc;
-        // }
-        // abs_corr = 0;
-        // for(j=0; j<phy_struct->prach_N_zc; j++)
-        // {
-        //     abs_corr_re = phy_struct->prach_x_u_v_re[max_root][j]*phy_struct->prach_dft_out[j][0]
-        //                 + phy_struct->prach_x_u_v_im[max_root][j]*phy_struct->prach_dft_out[j][1];
-        //     abs_corr_im = phy_struct->prach_x_u_v_re[max_root][j]*phy_struct->prach_dft_out[j][1]
-        //                 - phy_struct->prach_x_u_v_im[max_root][j]*phy_struct->prach_dft_out[j][0];
-        //     abs_corr    += abs_corr_re*abs_corr_re+abs_corr_im*abs_corr_im;            
-        // }   
-
-        ave_val = abs_corr/phy_struct->prach_N_zc;
-
+            // distance to 702240+j*0
+            float tmp_dist = ((tmp_re-702240)*(tmp_re-702240)+tmp_im*tmp_im);
+            if( min_distance > tmp_dist )
+            {
+                min_distance = tmp_dist;
+                max_root     = preamble_idx;
+            }
+        }
         cerr << "preamble root idx is "<<max_root<< endl;
         
-        if(max_val >= 50*ave_val &&
-           max_val != 0)
-        {
-            *N_det_pre = 1;
-            //*det_pre   = max_root*(v_max+1) + ((max_offset+N_cs)%phy_struct->prach_N_zc)/N_cs;
-            //*det_ta    = (((N_cs - ((max_offset+N_cs)%phy_struct->prach_N_zc))%N_cs)*29.155/16)-1;
-        }else{
-            *N_det_pre = 0;
-        }
-
         err = LIBLTE_SUCCESS;
     }
 
@@ -3757,6 +3737,7 @@ LIBLTE_ERROR_ENUM liblte_phy_pdsch_channel_encode(LIBLTE_PHY_STRUCT          *ph
                 // SDR_demo : bypass scrambling, enforce phy_struct->pdsch_scramb_bits = phy_struct->pdsch_encode_bits
                 c_init = (pdcch->alloc[alloc_idx].rnti << 14) | (0 << 13) | (subframe->num << 9) | N_id_cell;
                 generate_prs_c(c_init, N_bits, phy_struct->pdsch_c);
+                //#pragma omp parallel for
                 for(i=0; i<N_bits; i++)
                 {
                     phy_struct->pdsch_scramb_bits[i] = phy_struct->pdsch_encode_bits[i] ^ phy_struct->pdsch_c[i];
@@ -3774,6 +3755,43 @@ LIBLTE_ERROR_ENUM liblte_phy_pdsch_channel_encode(LIBLTE_PHY_STRUCT          *ph
                                   phy_struct->pdsch_d_re,
                                   phy_struct->pdsch_d_im,
                                   &M_symb);
+
+                // Debug ///////////////////
+                ////////////////////////////
+                // modulation_demapper(phy_struct->pdsch_d_re,
+                //                     phy_struct->pdsch_d_im,
+                //                     M_symb,
+                //                     pdcch->alloc[alloc_idx].mod_type,
+                //                     phy_struct->pdsch_soft_bits,
+                //                     &N_bits);
+                // for(i=0; i<N_bits; i++)
+                // {
+                //     phy_struct->pdsch_descramb_bits[i] = (float)phy_struct->pdsch_soft_bits[i]*(1-2*(float)phy_struct->pdsch_c[i]);
+                // }
+                // uint8                        out_bits;
+                // uint32                       N_out_bits;
+                // if(LIBLTE_SUCCESS == dlsch_channel_decode(phy_struct,
+                //                                           phy_struct->pdsch_descramb_bits,
+                //                                           N_bits,
+                //                                           pdcch->alloc[alloc_idx].tbs,
+                //                                           pdcch->alloc[alloc_idx].tx_mode,
+                //                                           pdcch->alloc[alloc_idx].rv_idx,
+                //                                           8,
+                //                                           250368, // FIXME: Using N_soft from a cat 1 UE (3GPP TS 36.306)
+                //                                           &out_bits,
+                //                                           &N_out_bits))
+                // {
+                //     err = LIBLTE_SUCCESS;
+                //     cerr << "Debug Test PDSCH successfully...\n";
+                // }
+                // else{
+                //     cerr << "Debug Test PDSCH failed...\n";
+                // }
+                // getchar();
+                /////////////////////////////////
+                /////////////////////////////////
+
+
                 // SDR_demo : assign M_symb = 480*3, nr_of_QPSK
                 // SDR_demo : assign N_ant = 2
                 // SDR_demo : assign pdcch->alloc[alloc_idx].pre_coder_type = LIBLTE_PHY_PRE_CODER_TYPE_SPATIAL_MULTIPLEXING
@@ -4198,6 +4216,7 @@ LIBLTE_ERROR_ENUM liblte_phy_bch_channel_decode(LIBLTE_PHY_STRUCT          *phy_
                 phy_struct->bch_y_est_re[idx+48] = subframe->rx_symb_re[8][in_idx];
                 phy_struct->bch_y_est_im[idx+48] = subframe->rx_symb_im[8][in_idx];
                 
+                //#pragma omp parallel for
                 for(p=0; p<4; p++)
                 {
                     phy_struct->bch_c_est_re[p][idx]    = subframe->rx_ce_re[p][7][in_idx];
@@ -4212,6 +4231,7 @@ LIBLTE_ERROR_ENUM liblte_phy_bch_channel_decode(LIBLTE_PHY_STRUCT          *phy_
             phy_struct->bch_y_est_re[i+168] = subframe->rx_symb_re[10][in_idx];
             phy_struct->bch_y_est_im[i+168] = subframe->rx_symb_im[10][in_idx];
             
+            //#pragma omp parallel for
             for(p=0; p<4; p++)
             {
                 phy_struct->bch_c_est_re[p][i+96]  = subframe->rx_ce_re[p][9][in_idx];
@@ -4225,8 +4245,8 @@ LIBLTE_ERROR_ENUM liblte_phy_bch_channel_decode(LIBLTE_PHY_STRUCT          *phy_
         generate_prs_c(N_id_cell, 1920, phy_struct->bch_c);
 
         // Try decoding with 1, 2, and 4 antennas
-
-        for(p=1; p<5; p++)
+        //#pragma omp parallel for
+        for(p=1; p<2; p++)
         {
             if(p != 3)
             {
@@ -4265,10 +4285,12 @@ LIBLTE_ERROR_ENUM liblte_phy_bch_channel_decode(LIBLTE_PHY_STRUCT          *phy_
                 *N_ant = 0;
                 for(i=0; i<4; i++)
                 {
+                    //#pragma omp parallel for
                     for(j=0; j<1920; j++)
                     {
                         phy_struct->bch_descramb_bits[j] = RX_NULL_BIT;
                     }
+                    //#pragma omp parallel for
                     for(j=0; j<480; j++)
                     {
                         phy_struct->bch_descramb_bits[(i*480)+j] = (float)phy_struct->bch_soft_bits[j]*(1-2*(float)phy_struct->bch_c[(i*480)+j]);
@@ -4359,10 +4381,16 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_encode(LIBLTE_PHY_STRUCT             
        subframe   != NULL)
     {
         // PCFICH
+        //auto start_time = chrono::high_resolution_clock::now();
         pcfich_channel_map(phy_struct, pcfich, N_id_cell, N_ant, subframe);
+        //cerr<< ANSI_COLOR_RED << "\t\t\tEncode PCFICH: " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
+        //cerr<< ANSI_COLOR_RESET;
 
         // PHICH
+        //start_time = chrono::high_resolution_clock::now();
         phich_channel_map(phy_struct, phich, pcfich, N_id_cell, N_ant, phich_res, phich_dur, subframe);
+        //cerr<< ANSI_COLOR_RED << "\t\t\tEncode PHICH: " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
+        //cerr<< ANSI_COLOR_RESET;
 
         // PDCCH
         if(pdcch->N_alloc != 0)
@@ -4387,8 +4415,10 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_encode(LIBLTE_PHY_STRUCT             
             // Initialize the search space
             for(p=0; p<N_ant; p++)
             {
+                //#pragma omp parallel for
                 for(i=0; i<N_cce_pdcch; i++)
                 {
+                    //#pragma omp parallel for
                     for(j=0; j<4*N_reg_cce; j++)
                     {
                         phy_struct->pdcch_cce_re[p][i][j] = 0;
@@ -4448,6 +4478,7 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_encode(LIBLTE_PHY_STRUCT             
                            !phy_struct->pdcch_cce_used[4*css_idx+2] &&
                            !phy_struct->pdcch_cce_used[4*css_idx+3])
                         {
+                            //#pragma omp parallel for
                             for(i=0; i<N_bits; i++)
                             {
                                 phy_struct->pdcch_scramb_bits[i] = phy_struct->pdcch_encode_bits[i] ^ phy_struct->pdcch_c[4*css_idx*N_reg_cce*4*2 + i];
@@ -4493,8 +4524,6 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_encode(LIBLTE_PHY_STRUCT             
                             break;
                         }
                     }
-//#ifdef DEBUG
-// FIXME: User Specific search space does not work
                 }else{
                     // Add to the user search space, using aggregation level of 4
                     Y_k = pdcch->alloc[a_idx].rnti;
@@ -4505,12 +4534,13 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_encode(LIBLTE_PHY_STRUCT             
                     for(uss_idx=0; uss_idx<1; uss_idx++)
                     {
                         actual_idx = 4*((Y_k+uss_idx) % (N_cce_pdcch/4));
-                        fprintf(stderr,"UE cce idx: %d, and N_cce_pdcch: %d\n", actual_idx, N_cce_pdcch);
+                        //fprintf(stderr,"UE cce idx: %d, and N_cce_pdcch: %d\n", actual_idx, N_cce_pdcch);
                         if(!phy_struct->pdcch_cce_used[actual_idx+0] &&
                            !phy_struct->pdcch_cce_used[actual_idx+1] &&
                            !phy_struct->pdcch_cce_used[actual_idx+2] &&
                            !phy_struct->pdcch_cce_used[actual_idx+3])
                         {
+                            //#pragma omp parallel for
                             for(i=0; i<N_bits; i++)
                             {                                                                                             //actual_idx -> uss_idx                          
                                 phy_struct->pdcch_scramb_bits[i] = phy_struct->pdcch_encode_bits[i] ^ phy_struct->pdcch_c[4*actual_idx*N_reg_cce*4*2 + i];
@@ -4562,10 +4592,13 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_encode(LIBLTE_PHY_STRUCT             
             // Construct REGs
             for(p=0; p<N_ant; p++)
             {
+                //#pragma omp parallel for
                 for(i=0; i<N_cce_pdcch; i++) /// 1.4 MHz : 4
                 {
+                    //#pragma omp parallel for
                     for(j=0; j<N_reg_cce; j++)
                     {
+                        //#pragma omp parallel for
                         for(k=0; k<4; k++)
                         {
                             phy_struct->pdcch_reg_re[p][i*N_reg_cce+j][k] = phy_struct->pdcch_cce_re[p][i][j*4+k];
@@ -4577,8 +4610,10 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_encode(LIBLTE_PHY_STRUCT             
             // Permute the REGs, 3GPP TS 36.212 v10.1.0 section 5.1.4.2.1
             for(p=0; p<N_ant; p++)
             {
+                //#pragma omp parallel for
                 for(i=0; i<N_reg_pdcch; i++)
                 {
+                    //#pragma omp parallel for
                     for(j=0; j<4; j++)
                     {
                         phy_struct->pdcch_perm_re[p][i][j] = phy_struct->pdcch_reg_re[p][phy_struct->pdcch_permute_map[N_reg_pdcch][i]][j];
@@ -4589,9 +4624,11 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_encode(LIBLTE_PHY_STRUCT             
             // Cyclic shift the REGs
             for(p=0; p<N_ant; p++)
             {
+                //#pragma omp parallel for
                 for(i=0; i<N_reg_pdcch; i++)
                 {
-                    shift_idx = (i+N_id_cell) % N_reg_pdcch;
+                    uint32 shift_idx = (i+N_id_cell) % N_reg_pdcch;
+                    //#pragma omp parallel for
                     for(j=0; j<4; j++)
                     {
                         phy_struct->pdcch_shift_re[p][i][j] = phy_struct->pdcch_perm_re[p][shift_idx][j];
@@ -5301,7 +5338,7 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_decode_Chang(LIBLTE_PHY_STRUCT       
             k_prime++;
         }
         // Undo cyclic shift of the REGs
-        #pragma omp parallel for private(j,p)
+        //#pragma omp parallel for private(j,p)
         for(i=0; i<N_reg_pdcch; i++)
         {
             shift_idx = (i+N_id_cell) % N_reg_pdcch;
@@ -5317,7 +5354,7 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_decode_Chang(LIBLTE_PHY_STRUCT       
             }
         }
         // Undo permutation of the REGs, 3GPP TS 36.212 v10.1.0 section 5.1.4.2.1
-        #pragma omp parallel for
+        //#pragma omp parallel for
         for(i=0; i<N_reg_pdcch; i++)
         {
             phy_struct->pdcch_reg_vec[i] = i;
@@ -5340,12 +5377,12 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_decode_Chang(LIBLTE_PHY_STRUCT       
         }else{
             N_dummy = 0;
         }
-        #pragma omp parallel for
+        //#pragma omp parallel for
         for(i=0; i<N_dummy; i++)
         {
             phy_struct->ruc_tmp[i] = RX_NULL_BIT;
         }
-        #pragma omp parallel for
+        //#pragma omp parallel for
         for(i=N_dummy; i<C_cc_sb*R_cc_sb; i++)
         {
             phy_struct->ruc_tmp[i] = 0;
@@ -5430,7 +5467,7 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_decode_Chang(LIBLTE_PHY_STRUCT       
         }
         // Construct CCEs
         N_reg_cce = 9;
-        #pragma omp parallel for private(j,k,p)
+        //#pragma omp parallel for private(j,k,p)
         for(i=0; i<N_cce_pdcch; i++) ///2
         {
             for(j=0; j<N_reg_cce; j++)
@@ -5521,7 +5558,7 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_decode_Chang(LIBLTE_PHY_STRUCT       
                                 LIBLTE_PHY_MODULATION_TYPE_QPSK,
                                 phy_struct->pdcch_soft_bits,
                                 &N_bits);
-            #pragma omp parallel for
+            //#pragma omp parallel for
             for(j=0; j<N_bits; j++)
             {
                 phy_struct->pdcch_descramb_bits[j] = (float)phy_struct->pdcch_soft_bits[j]*(1-2*(float)phy_struct->pdcch_c[i*288+j]);
@@ -5897,16 +5934,19 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_decode(LIBLTE_PHY_STRUCT             
        pdcch      != NULL)
     {
         // PCFICH
+        auto start_time = chrono::high_resolution_clock::now();
         pcfich_channel_demap(phy_struct, subframe, N_id_cell, N_ant, pcfich, &N_bits);
         if(LIBLTE_SUCCESS != cfi_channel_decode(phy_struct,
                                                 phy_struct->pdcch_descramb_bits,
                                                 N_bits,
                                                 &pcfich->cfi))
         {
-            err = LIBLTE_ERROR_INVALID_CRC;
+            err = LIBLTE_ERROR_CFI_DECODE_FAILED;
             fprintf(stderr, "cfi_channel_decode failed\n");
             return(err);
         }
+        cerr<< ANSI_COLOR_YELLOW << "\t\tPCFICH Decoding total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;
+        cerr<< ANSI_COLOR_RESET;
         // PHICH
         phich_channel_demap(phy_struct, pcfich, subframe, N_id_cell, N_ant, phich_res, phich_dur, phich);
 
@@ -6271,8 +6311,8 @@ LIBLTE_ERROR_ENUM liblte_phy_pdcch_channel_decode(LIBLTE_PHY_STRUCT             
                (LIBLTE_SUCCESS == dci_channel_decode(phy_struct,
                                                      phy_struct->pdcch_descramb_bits,
                                                      N_bits,
-                                                     LIBLTE_MAC_SI_RNTI,
-                                                     1,
+                                                     LIBLTE_MAC_C_RNTI_START,//LIBLTE_MAC_SI_RNTI,
+                                                     2,//1,
                                                      0,
                                                      phy_struct->pdcch_dci,
                                                      dci_1a_size,
@@ -6735,16 +6775,18 @@ LIBLTE_ERROR_ENUM liblte_phy_map_pss(LIBLTE_PHY_STRUCT          *phy_struct,
     if(phy_struct != NULL &&
        subframe   != NULL)
     {
-        generate_pss(N_id_2, pss_re, pss_im);
-
-        for(p=0; p<N_ant; p++)
+        //generate_pss(N_id_2, pss_re, pss_im);
+        
+        for(int p=0; p<N_ant; p++)
         {
-            #pragma omp parallel for
-            for(i=0; i<62; i++)
+            //#pragma omp parallel for
+            for(int i=0; i<62; i++)
             {
                 k                             = i - 31 + (phy_struct->N_rb_dl*phy_struct->N_sc_rb_dl)/2;
-                subframe->tx_symb_re[p][6][k] = pss_re[i];
-                subframe->tx_symb_im[p][6][k] = pss_im[i];
+                //subframe->tx_symb_re[p][6][k] = pss_re[i];
+                //subframe->tx_symb_im[p][6][k] = pss_im[i];
+                subframe->tx_symb_re[p][6][k] = phy_struct->Gen_PSS_RE[i];
+                subframe->tx_symb_im[p][6][k] = phy_struct->Gen_PSS_IM[i];
             }
         }
 
@@ -8091,19 +8133,19 @@ LIBLTE_ERROR_ENUM liblte_phy_map_sss(LIBLTE_PHY_STRUCT          *phy_struct,
     if(phy_struct != NULL &&
        subframe   != NULL)
     {
-        generate_sss(phy_struct,
-                     N_id_1,
-                     N_id_2,
-                     &phy_struct->sss_mod_re_0[0][0],
-                     &phy_struct->sss_mod_im_0[0][0],
-                     &phy_struct->sss_mod_re_5[0][0],
-                     &phy_struct->sss_mod_im_5[0][0]);
+        // generate_sss(phy_struct,
+        //              N_id_1,
+        //              N_id_2,
+        //              &phy_struct->sss_mod_re_0[0][0],
+        //              &phy_struct->sss_mod_im_0[0][0],
+        //              &phy_struct->sss_mod_re_5[0][0],
+        //              &phy_struct->sss_mod_im_5[0][0]);
 
         if(subframe->num == 0)
         {
             for(p=0; p<N_ant; p++)
             {
-                #pragma omp parallel for
+                //#pragma omp parallel for
                 for(i=0; i<62; i++)
                 {
                     k                             = i - 31 + (phy_struct->N_rb_dl*phy_struct->N_sc_rb_dl)/2;
@@ -8114,7 +8156,7 @@ LIBLTE_ERROR_ENUM liblte_phy_map_sss(LIBLTE_PHY_STRUCT          *phy_struct,
         }else if(subframe->num == 5){
             for(p=0; p<N_ant; p++)
             {
-                #pragma omp parallel for
+                //#pragma omp parallel for
                 for(i=0; i<62; i++)
                 {
                     k                             = i - 31 + (phy_struct->N_rb_dl*phy_struct->N_sc_rb_dl)/2;
@@ -8182,7 +8224,7 @@ LIBLTE_ERROR_ENUM liblte_phy_find_sss_Chang(LIBLTE_PHY_STRUCT *phy_struct,
         memset(phy_struct->sss_mod_im_0, 0, sizeof(float)*168*LIBLTE_PHY_N_RB_DL_20MHZ*LIBLTE_PHY_N_SC_RB_DL_NORMAL_CP);
         memset(phy_struct->sss_mod_re_5, 0, sizeof(float)*168*LIBLTE_PHY_N_RB_DL_20MHZ*LIBLTE_PHY_N_SC_RB_DL_NORMAL_CP);
         memset(phy_struct->sss_mod_im_5, 0, sizeof(float)*168*LIBLTE_PHY_N_RB_DL_20MHZ*LIBLTE_PHY_N_SC_RB_DL_NORMAL_CP);
-        #pragma omp parallel for
+        //#pragma omp parallel for
         for(i=0; i<168; i++)
         {
             generate_sss(phy_struct,
@@ -8634,25 +8676,25 @@ LIBLTE_ERROR_ENUM liblte_phy_dl_find_coarse_timing_and_freq_offset_Chang(LIBLTE_
        timing_struct != NULL)
     {
         // Timing correlation
-        #pragma omp parallel for
+        //#pragma omp parallel for
         for(i=0; i<phy_struct->N_samps_per_slot; i++)
         {
             phy_struct->dl_timing_abs_corr[i] = 0;
         }
 
-        #pragma omp parallel for private(symbol, j)
+        #pragma omp parallel for num_threads(10)
         for(i=0; i<N_samps_per_symb_else; i++)
         {
-            corr_re = 0;
-            corr_im = 0;
-            corr_power = 0;
+            float corr_re = 0;
+            float corr_im = 0;
+            float corr_power = 0;
             //#pragma omp parallel for
-            for(symbol=0; symbol<N_symbols; symbol++) ///OFDM symbols
+            for(int symbol=0; symbol<N_symbols; symbol++) ///OFDM symbols
             {
-                k = symbol*N_samps_per_symb_else + i;    
-                for(j=0; j<phy_struct->N_samps_cp_l_else; j++)
+                int k = symbol*N_samps_per_symb_else + i;    
+                for(int j=0; j<phy_struct->N_samps_cp_l_else; j++)
                 {
-                    idx      = k + j;
+                    int idx      = k + j;
                     corr_re += i_samps[idx]*i_samps[idx+phy_struct->N_samps_per_symb] + q_samps[idx]*q_samps[idx+phy_struct->N_samps_per_symb];
                     corr_im += i_samps[idx]*q_samps[idx+phy_struct->N_samps_per_symb] - q_samps[idx]*i_samps[idx+phy_struct->N_samps_per_symb];
                     
@@ -8669,12 +8711,12 @@ LIBLTE_ERROR_ENUM liblte_phy_dl_find_coarse_timing_and_freq_offset_Chang(LIBLTE_
         abs_corr_max = 0;
         for(i=0; i<N_samps_per_symb_else; i++)
         {
-            if(phy_struct->normalized_abs_corr[i] > 0.05){
+            //if(phy_struct->normalized_abs_corr[i] > 0.05){
                 if(phy_struct->normalized_abs_corr[i] > abs_corr_max){
                     abs_corr_max = phy_struct->normalized_abs_corr[i];
                     timing_struct->symb_starts[0][0] = i;
                 }
-            }
+            //}
         }
         if(timing_struct->symb_starts[0][0] < 0)
         {
@@ -8682,13 +8724,15 @@ LIBLTE_ERROR_ENUM liblte_phy_dl_find_coarse_timing_and_freq_offset_Chang(LIBLTE_
         }
 
         fprintf(stderr,"symb_starts is %d from coarse timing\n",timing_struct->symb_starts[0][0]);
-        #pragma omp parallel for
+        //#pragma omp parallel for
         for(i=1; i<7; i++)
         {
             if(i==1){
                 timing_struct->symb_starts[0][i] = timing_struct->symb_starts[0][i-1]+138;
             }
             else{
+
+
                 timing_struct->symb_starts[0][i] = timing_struct->symb_starts[0][i-1]+137;
             }
         }
@@ -8707,6 +8751,7 @@ LIBLTE_ERROR_ENUM liblte_phy_dl_find_coarse_timing_and_freq_offset_Chang(LIBLTE_
 
     return(err);
 }
+
 
 LIBLTE_ERROR_ENUM liblte_phy_dl_find_coarse_timing_and_freq_offset(LIBLTE_PHY_STRUCT               *phy_struct,
                                                                    float                           *i_samps,
@@ -8881,7 +8926,7 @@ LIBLTE_ERROR_ENUM liblte_phy_create_dl_subframe(LIBLTE_PHY_STRUCT          *phy_
 {
     LIBLTE_ERROR_ENUM err = LIBLTE_ERROR_INVALID_INPUTS;
     uint32            i;
-    uint32            idx     = 0;
+    //uint32            idx     = 0;
     uint32            N_samps = 0;
     //LTE_File lte_file_OFDM_symbol("OFDM_symbol.dat");
 
@@ -8891,9 +8936,22 @@ LIBLTE_ERROR_ENUM liblte_phy_create_dl_subframe(LIBLTE_PHY_STRUCT          *phy_
        q_samps    != NULL)
     {
         // Modulate symbols
-        for(i=0; i<14; i++)
+        //#pragma omp parallel for
+        for(int i=0; i<14; i++)
         {
-            idx += N_samps;
+            uint32 idx = 0;
+            if(i<7)
+            {
+                if(i%7==0)
+                    idx = 0;
+                else
+                    idx = 138+137*(i-1);
+            }else{
+                if(i%7==0)
+                    idx = 960;
+                else
+                    idx = 960+138+137*(i%7-1); 
+            }
             symbols_to_samples_dl(phy_struct,
                                   &subframe->tx_symb_re[ant][i][0],
                                   &subframe->tx_symb_im[ant][i][0],
@@ -8901,17 +8959,8 @@ LIBLTE_ERROR_ENUM liblte_phy_create_dl_subframe(LIBLTE_PHY_STRUCT          *phy_
                                   &i_samps[idx],
                                   &q_samps[idx],
                                   &N_samps);
-
-
         }
-
         err = LIBLTE_SUCCESS;
-
-        /*Record OFDM symbol*/
-        //lte_file_OFDM_symbol.record_OFDM(i_samps, q_samps, idx);
-                
-
-
     }
     return(err);
 }
@@ -8970,8 +9019,9 @@ LIBLTE_ERROR_ENUM liblte_phy_get_dl_subframe_and_ce(LIBLTE_PHY_STRUCT          *
         subframe->num = subfr_num;  // need to assign outside, Chia-Hao Chang
         
         auto start_time = chrono::high_resolution_clock::now();
-        #pragma omp parallel for
-        for(i=0; i<16; i++)
+
+        #pragma omp parallel for num_threads(10)
+        for(int i=0; i<14; i++)
         {
             // Demodulate symbols
             samples_to_symbols_dl(phy_struct,
@@ -8987,46 +9037,50 @@ LIBLTE_ERROR_ENUM liblte_phy_get_dl_subframe_and_ce(LIBLTE_PHY_STRUCT          *
         cerr << ANSI_COLOR_RED << "\t\t\tFFT total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;   
         
         // Generate cell specific reference signals
-        start_time = chrono::high_resolution_clock::now();
-        #pragma omp parallel sections
-        {
-            #pragma omp section
-            {
-                generate_crs((subfr_num*2+0)%20, 0, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[0],  phy_struct->dl_ce_crs_im[0]);
-            }
-            #pragma omp section
-            {
-                generate_crs((subfr_num*2+0)%20, 1, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[1],  phy_struct->dl_ce_crs_im[1]);
-            }
-            #pragma omp section
-            {
-                generate_crs((subfr_num*2+0)%20, 4, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[4],  phy_struct->dl_ce_crs_im[4]);
-            }      
-            #pragma omp section
-            {
-                generate_crs((subfr_num*2+1)%20, 0, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[7],  phy_struct->dl_ce_crs_im[7]);
-            }
-            #pragma omp section
-            {
-                generate_crs((subfr_num*2+1)%20, 1, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[8],  phy_struct->dl_ce_crs_im[8]);
-            }
-            #pragma omp section
-            {
-                generate_crs((subfr_num*2+1)%20, 4, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[11], phy_struct->dl_ce_crs_im[11]);
-            }
-            #pragma omp section
-            {
-                generate_crs((subfr_num*2+2)%20, 0, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[14], phy_struct->dl_ce_crs_im[14]);
-            }
-            #pragma omp section
-            {
-                generate_crs((subfr_num*2+2)%20, 1, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[15], phy_struct->dl_ce_crs_im[15]);
-            }
-        } 
-        cerr << ANSI_COLOR_RED << "\t\t\tGen RS total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;   
- 
+        // start_time = chrono::high_resolution_clock::now();
+        // #pragma omp parallel sections
+        // {
+        //     #pragma omp section
+        //     {
+        //         generate_crs((subfr_num*2+0)%20, 0, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[0],  phy_struct->dl_ce_crs_im[0]);
+
+        //     }
+        //     #pragma omp section
+        //     {
+        //         generate_crs((subfr_num*2+0)%20, 1, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[1],  phy_struct->dl_ce_crs_im[1]);
+        //     }
+        //     #pragma omp section
+        //     {
+        //         generate_crs((subfr_num*2+0)%20, 4, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[4],  phy_struct->dl_ce_crs_im[4]);
+        //     }      
+        //     #pragma omp section
+        //     {
+        //         generate_crs((subfr_num*2+1)%20, 0, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[7],  phy_struct->dl_ce_crs_im[7]);
+        //     }
+        //     #pragma omp section
+        //     {
+        //         generate_crs((subfr_num*2+1)%20, 1, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[8],  phy_struct->dl_ce_crs_im[8]);
+        //     }
+        //     #pragma omp section
+        //     {
+        //         generate_crs((subfr_num*2+1)%20, 4, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[11], phy_struct->dl_ce_crs_im[11]);
+        //     }
+        //     #pragma omp section
+        //     {
+        //         generate_crs((subfr_num*2+2)%20, 0, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[14], phy_struct->dl_ce_crs_im[14]);
+        //     }
+        //     #pragma omp section
+        //     {
+        //         generate_crs((subfr_num*2+2)%20, 1, N_id_cell, phy_struct->N_sc_rb_dl, phy_struct->dl_ce_crs_re[15], phy_struct->dl_ce_crs_im[15]);
+        //     }
+        // } 
+        // cerr << ANSI_COLOR_RED << "\t\t\tGen RS total : " << chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start_time).count() << " us" << endl;   
+        
+
+
         // Determine channel estimates
         start_time = chrono::high_resolution_clock::now();
+        // Fix N_ant 1
         for(p=0; p<1; p++)
         {
             // Define v, sym, and N_sym
@@ -9273,29 +9327,49 @@ LIBLTE_ERROR_ENUM liblte_phy_get_dl_subframe_and_ce(LIBLTE_PHY_STRUCT          *
 
             /* Chia-Hao Chang's Version **********************************/
             // Subcarrier index    
-            float frac_re;
-            float frac_im;
+            
+            bool similar_channel = true;
 
-            #pragma omp parallel for private(j, z)
-            for(i=0; i<N_sym; i++)
+            //#pragma omp parallel for private(j, z)
+            for(i=0; i<N_sym-1; i++)
             {
+                float frac_re;
+                float frac_im;
+
+                float prev_gain_re[14][128];
+                float prev_gain_im[14][128];
+
                 float* sym_re = &subframe->rx_symb_re[sym[i]][0];
                 float* sym_im = &subframe->rx_symb_im[sym[i]][0];
-                float* rs_re  = &phy_struct->dl_ce_crs_re[sym[i]][0];
-                float* rs_im  = &phy_struct->dl_ce_crs_im[sym[i]][0];
+                //float* rs_re  = &phy_struct->dl_ce_crs_re[sym[i]][0];
+                //float* rs_im  = &phy_struct->dl_ce_crs_im[sym[i]][0];
+                float* rs_re  = &phy_struct->DL_RS_re[subfr_num][sym[i]][0];
+                float* rs_im  = &phy_struct->DL_RS_im[subfr_num][sym[i]][0];
 
-                #pragma omp parallel for
+                //#pragma omp parallel for num_threads(12)
                 for(int j=0; j<2*phy_struct->N_rb_dl; j++)
                 {
-                    k               = 6*j + (v[i] + v_shift)%6;
-                    m_prime         = j + LIBLTE_PHY_N_RB_DL_MAX - phy_struct->N_rb_dl;
+                    int k               = 6*j + (v[i] + v_shift)%6;
+                    int m_prime             = j + LIBLTE_PHY_N_RB_DL_MAX - phy_struct->N_rb_dl;
                     
                     // Chanenl gain
+                    prev_gain_re[sym[i]][k] = subframe->rx_ce_re[p][sym[i]][k];
+                    prev_gain_im[sym[i]][k] = subframe->rx_ce_im[p][sym[i]][k];
+
                     subframe->rx_ce_re[p][sym[i]][k] = sym_re[k]*rs_re[m_prime] + sym_im[k]*rs_im[m_prime];
                     subframe->rx_ce_im[p][sym[i]][k] = sym_im[k]*rs_re[m_prime] - sym_re[k]*rs_im[m_prime];
                     
-                    //phy_struct->dl_ce_mag[i][k] = sqrt(tmp_re*tmp_re + tmp_im*tmp_im);
-                    //phy_struct->dl_ce_ang[i][k] = atan2f(tmp_im, tmp_re);
+                    // if((prev_gain_re[sym[i]][k]-subframe->rx_ce_re[p][sym[i]][k])*
+                    //    (prev_gain_re[sym[i]][k]-subframe->rx_ce_re[p][sym[i]][k])
+                    //   +(prev_gain_im[sym[i]][k]-subframe->rx_ce_im[p][sym[i]][k])*
+                    //    (prev_gain_im[sym[i]][k]-subframe->rx_ce_im[p][sym[i]][k])
+                    //   > 0.2
+                    //     )
+                    // {
+                    //     similar_channel = false; 
+                    //     cerr << "Re estimate " << endl;
+                    // }
+
 
                     // Unwrap phase
                     if(j > 0)
@@ -9306,104 +9380,139 @@ LIBLTE_ERROR_ENUM liblte_phy_get_dl_subframe_and_ce(LIBLTE_PHY_STRUCT          *
                         frac_re = (subframe->rx_ce_re[p][sym[i]][k] - subframe->rx_ce_re[p][sym[i]][k-6])/6;
                         frac_im = (subframe->rx_ce_im[p][sym[i]][k] - subframe->rx_ce_im[p][sym[i]][k-6])/6;
                         
-                        #pragma omp parallel for
-                        for(z=1; z<6; z++)
+                        // #pragma omp parallel for
+                        // for(z=1; z<6; z++)
+                        // {
+                        //     subframe->rx_ce_re[p][sym[i]][k-z] = subframe->rx_ce_re[p][sym[i]][k-(z-1)]-frac_re;
+                        //     subframe->rx_ce_im[p][sym[i]][k-z] = subframe->rx_ce_im[p][sym[i]][k-(z-1)]-frac_im;
+                        // }
+                        //#pragma omp parallel for
+                        for(int z=1; z<6; z++)
                         {
-                            subframe->rx_ce_re[p][sym[i]][k-z] = subframe->rx_ce_re[p][sym[i]][k-(z-1)]-frac_re;
-                            subframe->rx_ce_im[p][sym[i]][k-z] = subframe->rx_ce_im[p][sym[i]][k-(z-1)]-frac_im;
-                            //phy_struct->dl_ce_mag[i][k-z] = phy_struct->dl_ce_mag[i][k-(z-1)] - frac_mag;
-                            //phy_struct->dl_ce_ang[i][k-z] = phy_struct->dl_ce_ang[i][k-(z-1)] - frac_ang;
+                            subframe->rx_ce_re[p][sym[i]][k-z] = subframe->rx_ce_re[p][sym[i]][k]-z*frac_re;
+                            subframe->rx_ce_im[p][sym[i]][k-z] = subframe->rx_ce_im[p][sym[i]][k]-z*frac_im;
                         }
+
                     }
 
                     // Linearly interpolate before 1st CRS
                     if(j == 1)
                     {
-                        #pragma omp parallel for
-                        for(z=1; z<((v[i] + v_shift)%6)+1; z++)
+                        //#pragma omp parallel for
+                        for(int z=1; z<((v[i] + v_shift)%6)+1; z++)
                         {
                             subframe->rx_ce_re[p][sym[i]][k-6-z] = subframe->rx_ce_re[p][sym[i]][k-6-(z-1)]-frac_re;
                             subframe->rx_ce_im[p][sym[i]][k-6-z] = subframe->rx_ce_im[p][sym[i]][k-6-(z-1)]-frac_im;
-                            //phy_struct->dl_ce_mag[i][k-6-z] = phy_struct->dl_ce_mag[i][k-6-(z-1)] - frac_mag;
-                            //phy_struct->dl_ce_ang[i][k-6-z] = phy_struct->dl_ce_ang[i][k-6-(z-1)] - frac_ang;
                         }
+                        // #pragma omp parallel for
+                        // for(int z=1; z<((v[i] + v_shift)%6)+1; z++)
+                        // {
+                        //     subframe->rx_ce_re[p][sym[i]][k-6-z] = subframe->rx_ce_re[p][sym[i]][k-6-(z-1)]-frac_re;
+                        //     subframe->rx_ce_im[p][sym[i]][k-6-z] = subframe->rx_ce_im[p][sym[i]][k-6-(z-1)]-frac_im;
+                        // }
+
                     }
                 }
 
                 // Linearly interpolate after last CRS
-                #pragma omp parallel for
+                //#pragma omp parallel for
                 for(int z=1; z<(5-(v[i] + v_shift)%6)+1; z++)
                 {
                     subframe->rx_ce_re[p][sym[i]][k+z] = subframe->rx_ce_re[p][sym[i]][k+(z-1)]-frac_re;
                     subframe->rx_ce_im[p][sym[i]][k+z] = subframe->rx_ce_im[p][sym[i]][k+(z-1)]-frac_im;
-
-                    //phy_struct->dl_ce_mag[i][k+z] = phy_struct->dl_ce_mag[i][k+(z-1)] - frac_mag;
-                    //phy_struct->dl_ce_ang[i][k+z] = phy_struct->dl_ce_ang[i][k+(z-1)] - frac_ang;
                 }
             }
 
             // Symbol index
-            if(N_sym==5)
+            if(N_sym==5/* && similar_channel==false*/)
             {
-                #pragma omp parallel for 
+                //#pragma omp parallel for 
                 for(int j=0; j<phy_struct->N_rb_dl*phy_struct->N_sc_rb_dl; j++)
                 {
                     // Construct symbol 0, 4, 7, and 11 channel estimates directly        
-                    #pragma omp parallel sections
-                    {
+                    //#pragma omp parallel sections num_threads(2)
+                    //{
                         // Interpolate for symbol 1, 2, and 3 channel estimates
-                        #pragma omp section
-                        {   
+                        //#pragma omp section
+                        //{   
                             float frac_re_1  = (subframe->rx_ce_re[p][4][j]-subframe->rx_ce_re[p][0][j])/4;
                             float frac_im_1  = (subframe->rx_ce_im[p][4][j]-subframe->rx_ce_im[p][0][j])/4;
 
-                            #pragma omp parallel for
-                            for(int z=3; z>0; z--)
+                            //#pragma omp parallel for
+                            // for(int z=3; z>0; z--)
+                            // {
+                            //     subframe->rx_ce_re[p][z][j]  = subframe->rx_ce_re[p][z+1][j] - frac_re_1;
+                            //     subframe->rx_ce_im[p][z][j]  = subframe->rx_ce_im[p][z+1][j] - frac_im_1;
+                            // }
+                            //#pragma omp parallel for
+                            for(int z=1; z<=3; z++)
                             {
-                                subframe->rx_ce_re[p][z][j]  = subframe->rx_ce_re[p][z+1][j] - frac_re_1;
-                                subframe->rx_ce_im[p][z][j]  = subframe->rx_ce_im[p][z+1][j] - frac_im_1;
+                                subframe->rx_ce_re[p][z][j]  = subframe->rx_ce_re[p][0][j] + z*frac_re_1;
+                                subframe->rx_ce_im[p][z][j]  = subframe->rx_ce_im[p][0][j] + z*frac_im_1;
                             }
-                        }
-                        #pragma omp section
-                        {
+
+
+                        //}
+                        //#pragma omp section
+                        //{
                             // Interpolate for symbol 5 and 6 channel estimates
                             float frac_re_2  = (subframe->rx_ce_re[p][7][j]-subframe->rx_ce_re[p][4][j])/3;
                             float frac_im_2  = (subframe->rx_ce_im[p][7][j]-subframe->rx_ce_im[p][4][j])/3;
                             
-                            #pragma omp parallel for
-                            for(int z=6; z>4; z--)
+                            // #pragma omp parallel for
+                            // for(int z=6; z>4; z--)
+                            // {
+                            //     subframe->rx_ce_re[p][z][j]  = subframe->rx_ce_re[p][z+1][j] - frac_re_2;
+                            //     subframe->rx_ce_im[p][z][j]  = subframe->rx_ce_im[p][z+1][j] - frac_im_2;
+                            // }
+                            //#pragma omp parallel for
+                            for(int z=1; z<=2; z++)
                             {
-                                subframe->rx_ce_re[p][z][j]  = subframe->rx_ce_re[p][z+1][j] - frac_re_2;
-                                subframe->rx_ce_im[p][z][j]  = subframe->rx_ce_im[p][z+1][j] - frac_im_2;
+                                subframe->rx_ce_re[p][4+z][j]  = subframe->rx_ce_re[p][4][j] + z*frac_re_2;
+                                subframe->rx_ce_im[p][4+z][j]  = subframe->rx_ce_im[p][4][j] + z*frac_im_2;
                             }
-                        }
-                        #pragma omp section
-                        {
+                        //}
+                        //#pragma omp section
+                        //{
                             // Interpolate for symbol 8, 9, and 10 channel estimates
                             float frac_re_3  = (subframe->rx_ce_re[p][11][j]-subframe->rx_ce_re[p][7][j])/4;
                             float frac_im_3  = (subframe->rx_ce_im[p][11][j]-subframe->rx_ce_im[p][7][j])/4;
                             
-                            #pragma omp parallel for
-                            for(int z=10; z>7; z--)
+                            // #pragma omp parallel for
+                            // for(int z=10; z>7; z--)
+                            // {
+                            //     subframe->rx_ce_re[p][z][j]  = subframe->rx_ce_re[p][z+1][j] - frac_re_3;
+                            //     subframe->rx_ce_im[p][z][j]  = subframe->rx_ce_im[p][z+1][j] - frac_im_3;
+                            // }
+                            //#pragma omp parallel for
+                            for(int z=1; z<=3; z++)
                             {
-                                subframe->rx_ce_re[p][z][j]  = subframe->rx_ce_re[p][z+1][j] - frac_re_3;
-                                subframe->rx_ce_im[p][z][j]  = subframe->rx_ce_im[p][z+1][j] - frac_im_3;
+                                subframe->rx_ce_re[p][7+z][j]  = subframe->rx_ce_re[p][7][j] + z*frac_re_3;
+                                subframe->rx_ce_im[p][7+z][j]  = subframe->rx_ce_im[p][7][j] + z*frac_im_3;
                             }
-                        }
-                        #pragma omp section
-                        {
+                        //}
+                        //#pragma omp section
+                        //{
                             // Interpolate for symbol 12 and 13 channel estimates
-                            float frac_re_4  = (subframe->rx_ce_re[p][14][j]-subframe->rx_ce_re[p][11][j])/3;
-                            float frac_im_4  = (subframe->rx_ce_im[p][14][j]-subframe->rx_ce_im[p][11][j])/3;
-                            
-                            #pragma omp parallel for
-                            for(int z=13; z>11; z--)
+                            //float frac_re_4  = (subframe->rx_ce_re[p][14][j]-subframe->rx_ce_re[p][11][j])/3;
+                            //float frac_im_4  = (subframe->rx_ce_im[p][14][j]-subframe->rx_ce_im[p][11][j])/3;
+                            float frac_re_4  = (subframe->rx_ce_re[p][11][j]-subframe->rx_ce_re[p][7][j])/4;
+                            float frac_im_4  = (subframe->rx_ce_im[p][11][j]-subframe->rx_ce_im[p][7][j])/4;
+
+                            // #pragma omp parallel for
+                            // for(int z=12; z<=13; z++)
+                            // {
+                            //     subframe->rx_ce_re[p][z][j]  = subframe->rx_ce_re[p][z-1][j] - frac_re_4;
+                            //     subframe->rx_ce_im[p][z][j]  = subframe->rx_ce_im[p][z-1][j] - frac_im_4;
+                            // }
+                            //#pragma omp parallel for
+                            for(int z=1; z<=2; z++)
                             {
-                                subframe->rx_ce_re[p][z][j]  = subframe->rx_ce_re[p][z+1][j] - frac_re_4;
-                                subframe->rx_ce_im[p][z][j]  = subframe->rx_ce_im[p][z+1][j] - frac_im_4;
+                                subframe->rx_ce_re[p][11+z][j]  = subframe->rx_ce_re[p][11][j] - z*frac_re_4;
+                                subframe->rx_ce_im[p][11+z][j]  = subframe->rx_ce_im[p][11][j] - z*frac_im_4;
                             }
-                        }
-                    }
+                        //}
+                    //}
                 }
             }
             /*************************************************************/
@@ -9450,6 +9559,7 @@ LIBLTE_ERROR_ENUM liblte_phy_get_ul_subframe(LIBLTE_PHY_STRUCT          *phy_str
                                   i%7,
                                   &subframe->rx_symb_re[i][0],
                                   &subframe->rx_symb_im[i][0]);
+
             /**/
         }
 
@@ -9781,6 +9891,7 @@ void layer_demapper_ul(float  *x_re,
     {
         // 3GPP TS 36.211 v10.1.0 section 5.3.2A.1 and 5.3.2A.2
         *M_symb = M_layer_symb;
+        //#pragma omp parallel for
         for(i=0; i<M_layer_symb; i++)
         {
             d_re[i] = x_re[i];
@@ -9861,14 +9972,18 @@ void transform_pre_decoding(LIBLTE_PHY_STRUCT *phy_struct,
     M_pusch_sc      = N_prb * phy_struct->N_sc_rb_ul;
     sqrt_M_pusch_sc = sqrt(M_pusch_sc);
 
+    //#pragma omp parallel for
     for(i=0; i<12; i++)
     {
+        //#pragma omp parallel for
         for(j=0; j<M_pusch_sc; j++)
         {
             phy_struct->transform_precoding_in[j][0] = y_re[i*M_pusch_sc + j];
             phy_struct->transform_precoding_in[j][1] = y_im[i*M_pusch_sc + j];
         }
         fftwf_execute(phy_struct->transform_pre_decoding_plan[N_prb]);
+        
+        //#pragma omp parallel for
         for(j=0; j<M_pusch_sc; j++)
         {   // Fixed by Chia-Hao Chang
             x_re[i*M_pusch_sc + j] = sqrt_M_pusch_sc * phy_struct->transform_precoding_out[j][0] / M_pusch_sc;
@@ -9942,6 +10057,7 @@ void pre_decoder_and_matched_filter_ul(float  *z_re,
     {
         // 3GPP TS 36.211 v10.1.0 section 5.3.3A.1
         *M_layer_symb = M_ap_symb;
+        //#pragma omp parallel for
         for(i=0; i<M_ap_symb; i++)
         {
             //h_norm  = sqrt(h_re[i] * h_re[i] + h_im[i] * h_im[i]);
@@ -10378,6 +10494,8 @@ void layer_mapper_dl(float                          *d_re,
     {
         // 3GPP TS 36.211 v10.1.0 section 6.3.3.1
         *M_layer_symb = M_symb;
+
+        //#pragma omp parallel for
         for(i=0; i<M_symb; i++)
         {
             x_re[i] = d_re[i];
@@ -10580,7 +10698,7 @@ void layer_demapper_dl(float                          *x_re,
     {
         *M_symb = *M_symb - 2;
     }
-    #pragma omp parallel for private(p)
+    //#pragma omp parallel for private(p)
     for(i=0; i<M_layer_symb; i++)
     {
         for(p=0; p<N_ant; p++)
@@ -10632,6 +10750,7 @@ void pre_coder_dl(float                          *x_re,
     {
         // 3GPP TS 36.211 v10.1.0 section 6.3.4.1
         *M_ap_symb = M_layer_symb;
+        //#pragma omp parallel for
         for(i=0; i<*M_ap_symb; i++)
         {
             y_re_ptr[0][i] = x_re_ptr[0][i];
@@ -10768,7 +10887,7 @@ void pre_decoder_and_matched_filter_dl(float                          *y_re,
     {
         // 3GPP TS 36.211 v10.1.0 section 6.3.4.1
         *M_layer_symb = M_ap_symb;
-        #pragma omp parallel for
+        //#pragma omp parallel for
         for(i=0; i<*M_layer_symb; i++)
         {
             h_norm         = (h_re_ptr[0][i] * h_re_ptr[0][i] +
@@ -10914,7 +11033,9 @@ void pcfich_channel_map(LIBLTE_PHY_STRUCT          *phy_struct,
                        &N_bits);
     c_init = (((subframe->num + 1)*(2*N_id_cell + 1)) << 9) + N_id_cell;
     generate_prs_c(c_init, N_bits, phy_struct->pdcch_c);
-    for(i=0; i<N_bits; i++)
+    
+    //#pragma omp parallel for
+    for(int i=0; i<N_bits; i++)
     {
         phy_struct->pdcch_scramb_bits[i] = phy_struct->pdcch_encode_bits[i] ^ phy_struct->pdcch_c[i];
     }
@@ -10959,9 +11080,6 @@ void pcfich_channel_map(LIBLTE_PHY_STRUCT          *phy_struct,
                     subframe->tx_symb_re[p][0][pcfich->k[i]+j] = phy_struct->pdcch_y_re[p][idx+(i*4)];
                     subframe->tx_symb_im[p][0][pcfich->k[i]+j] = phy_struct->pdcch_y_im[p][idx+(i*4)];
                     idx++;
-
-                    //fprintf(stderr, "PCFICH: subframe[0][0][%d] = %f\n", 
-                    //        pcfich->k[i]+j,phy_struct->pdcch_y_re[p][idx+(i*4)]);
                 }
             }
         }
@@ -11048,7 +11166,7 @@ void pcfich_channel_demap(LIBLTE_PHY_STRUCT          *phy_struct,
                         LIBLTE_PHY_MODULATION_TYPE_QPSK,
                         phy_struct->pdcch_soft_bits,
                         N_bits);
-    #pragma omp parallel for
+    //#pragma omp parallel for
     for(i=0; i<*N_bits; i++)
     {
         phy_struct->pdcch_descramb_bits[i] = (float)phy_struct->pdcch_soft_bits[i]*(1-2*(float)phy_struct->pdcch_c[i]);
@@ -11203,13 +11321,17 @@ void phich_channel_map(LIBLTE_PHY_STRUCT              *phy_struct,
     c_init = (((subframe->num + 1)*(2*N_id_cell + 1)) << 9) + N_id_cell;
     generate_prs_c(c_init, 12, phy_struct->pdcch_c);
     idx = 0;
+
+    //#pragma omp parallel for
     for(m_prime=0; m_prime<phy_struct->N_group_phich; m_prime++)
     {
+        //#pragma omp parallel for
         for(i=0; i<12; i++)
         {
             phy_struct->pdcch_d_re[i] = 0;
             phy_struct->pdcch_d_im[i] = 0;
         }
+        //#pragma omp parallel for
         for(seq=0; seq<8; seq++) // FIXME: Only handling normal CP
         {
             if(phich->present[m_prime][seq])
@@ -11368,7 +11490,7 @@ void phich_channel_demap(LIBLTE_PHY_STRUCT              *phy_struct,
             // Step 1, 2, and 3
             n_l_prime = phy_struct->N_rb_dl*2 - pcfich->N_reg;
             // Step 8
-            #pragma omp parallel for
+            //#pragma omp parallel for
             for(i=0; i<3; i++)
             {
                 n_hat[i] = (N_id_cell + m_prime + i*n_l_prime/3) % n_l_prime;
@@ -11388,7 +11510,7 @@ void phich_channel_demap(LIBLTE_PHY_STRUCT              *phy_struct,
 
             // Step 5
             y_idx = 0;
-            #pragma omp parallel for private(j,p)
+            //#pragma omp parallel for private(j,p)
             for(i=0; i<3; i++)
             {
                 phich->k[idx+i] = n_hat[i]*6;
@@ -11411,7 +11533,7 @@ void phich_channel_demap(LIBLTE_PHY_STRUCT              *phy_struct,
                     }
                 }
             }
-            #pragma omp parallel for
+            //#pragma omp parallel for
             for(i=0; i<12; i++)
             {
                 phy_struct->pdcch_d_re[i] = 0;
@@ -11487,7 +11609,7 @@ void generate_crs(uint32  N_s,
     generate_prs_c(c_init, 2*len, c);
 
     // Construct the reference signals
-    #pragma omp parallel for
+    //#pragma omp parallel for
     for(i=0; i<len; i++)
     {
         crs_re[i] = one_over_sqrt_2*(1 - 2*(float)c[2*i]);
@@ -11518,15 +11640,15 @@ void generate_pss(uint32  N_id_2,
         root_idx = 34;
     }
     
-    #pragma omp parallel for
-    for(i=0; i<31; i++)
+    //#pragma omp parallel for
+    for(int i=0; i<31; i++)
     {
         pss_re[i] = cosf(-M_PI*root_idx*i*(i+1)/63);
         pss_im[i] = sinf(-M_PI*root_idx*i*(i+1)/63);
     }
 
-    #pragma omp parallel for
-    for(i=31; i<62; i++)
+    //#pragma omp parallel for
+    for(int i=31; i<62; i++)
     {
         pss_re[i] = cosf(-M_PI*root_idx*(i+1)*(i+2)/63);
         pss_im[i] = sinf(-M_PI*root_idx*(i+1)*(i+2)/63);
@@ -11570,7 +11692,7 @@ void generate_sss(LIBLTE_PHY_STRUCT *phy_struct,
         phy_struct->sss_x_s_tilda[i+5] = (phy_struct->sss_x_s_tilda[i+2] +
                                           phy_struct->sss_x_s_tilda[i]) % 2;
     }
-    #pragma omp parallel for
+    //#pragma omp parallel for
     for(i=0; i<31; i++)
     {
         phy_struct->sss_s_tilda[i] = 1 - 2*phy_struct->sss_x_s_tilda[i];
@@ -11584,7 +11706,7 @@ void generate_sss(LIBLTE_PHY_STRUCT *phy_struct,
         phy_struct->sss_x_c_tilda[i+5] = (phy_struct->sss_x_c_tilda[i+3] +
                                           phy_struct->sss_x_c_tilda[i]) % 2;
     }
-    #pragma omp parallel for
+    //#pragma omp parallel for
     for(i=0; i<31; i++)
     {
         phy_struct->sss_c_tilda[i] = 1 - 2*phy_struct->sss_x_c_tilda[i];
@@ -11600,7 +11722,7 @@ void generate_sss(LIBLTE_PHY_STRUCT *phy_struct,
                                           phy_struct->sss_x_z_tilda[i+1] +
                                           phy_struct->sss_x_z_tilda[i]) % 2;
     }
-    #pragma omp parallel for
+    //#pragma omp parallel for
     for(i=0; i<31; i++)
     {
         phy_struct->sss_z_tilda[i] = 1 - 2*phy_struct->sss_x_z_tilda[i];
@@ -11618,7 +11740,7 @@ void generate_sss(LIBLTE_PHY_STRUCT *phy_struct,
     memcpy(phy_struct->sss_s0_m0_Chang[30], phy_struct->sss_s1_m1_Chang[30], 31);
 
     // Generate c0 and c1
-    #pragma omp parallel for
+    //#pragma omp parallel for
     for(i=0; i<32; i++)
     {
         phy_struct->sss_c0[i] = phy_struct->sss_c_tilda[(i + N_id_2) % 31];
@@ -11626,7 +11748,7 @@ void generate_sss(LIBLTE_PHY_STRUCT *phy_struct,
     }
 
     // Generate z1_m0 and z1_m1
-    #pragma omp parallel for
+    //#pragma omp parallel for
     for(i=0; i<31; i++)
     {
         phy_struct->sss_z1_m0[i] = phy_struct->sss_z_tilda[(i + (m0 % 8)) % 31];
@@ -11638,7 +11760,7 @@ void generate_sss(LIBLTE_PHY_STRUCT *phy_struct,
     memcpy(phy_struct->sss_z1_m0_Chang[30], phy_struct->sss_z1_m1_Chang[30], 31);
 
     // Generate SSS
-    #pragma omp parallel for
+    //#pragma omp parallel for
     for(i=0; i<31; i++)
     {
         sss_re_0[2*i]   = phy_struct->sss_s0_m0[i]*phy_struct->sss_c0[i];
@@ -11788,6 +11910,11 @@ void samples_to_symbols_dl(LIBLTE_PHY_STRUCT *phy_struct,
     uint32 index;
     uint32 i;
 
+    // For OpenMP
+    fftwf_complex  *s2s_in   = (fftwf_complex *)fftwf_malloc(sizeof(fftwf_complex)*(phy_struct)->N_samps_per_symb*2);;
+    fftwf_complex  *s2s_out   = (fftwf_complex *)fftwf_malloc(sizeof(fftwf_complex)*(phy_struct)->N_samps_per_symb*2);;
+ 
+
     // Calculate index and CP length
     if((symbol_offset % 7) == 0)
     {
@@ -11801,36 +11928,45 @@ void samples_to_symbols_dl(LIBLTE_PHY_STRUCT *phy_struct,
         index += phy_struct->N_samps_cp_l_0 - phy_struct->N_samps_cp_l_else;
     }
 
-    #pragma omp parallel for
+    //#pragma omp parallel for
     for(i=0; i<phy_struct->N_samps_per_symb; i++)
     {
-        phy_struct->s2s_in[i][0] = samps_re[index+CP_len-1+i];
-        phy_struct->s2s_in[i][1] = samps_im[index+CP_len-1+i];
+        //phy_struct->s2s_in[i][0] = samps_re[index+CP_len-1+i];
+        //phy_struct->s2s_in[i][1] = samps_im[index+CP_len-1+i];
+        s2s_in[i][0] = samps_re[index+CP_len-1+i];
+        s2s_in[i][1] = samps_im[index+CP_len-1+i];
     }
 
-    fftwf_execute(phy_struct->samps_to_symbs_dl_plan);
+    //fftwf_execute(phy_struct->samps_to_symbs_dl_plan);
+    fftwf_execute_dft(phy_struct->samps_to_symbs_dl_plan, s2s_in, s2s_out);
 
-    #pragma omp parallel for
     for(i=0; i<(phy_struct->FFT_size/2)-phy_struct->FFT_pad_size; i++)
     {
         // Positive spectrum
-        symb_re[i+((phy_struct->FFT_size/2)-phy_struct->FFT_pad_size)] = phy_struct->s2s_out[i+1][0];
-        symb_im[i+((phy_struct->FFT_size/2)-phy_struct->FFT_pad_size)] = phy_struct->s2s_out[i+1][1];
+        // symb_re[i+((phy_struct->FFT_size/2)-phy_struct->FFT_pad_size)] = phy_struct->s2s_out[i+1][0];
+        // symb_im[i+((phy_struct->FFT_size/2)-phy_struct->FFT_pad_size)] = phy_struct->s2s_out[i+1][1];
+        symb_re[i+((phy_struct->FFT_size/2)-phy_struct->FFT_pad_size)] = s2s_out[i+1][0];
+        symb_im[i+((phy_struct->FFT_size/2)-phy_struct->FFT_pad_size)] = s2s_out[i+1][1];
 
         // Negative spectrum
-        symb_re[((phy_struct->FFT_size/2)-phy_struct->FFT_pad_size)-i-1] = phy_struct->s2s_out[phy_struct->N_samps_per_symb-i-1][0];
-        symb_im[((phy_struct->FFT_size/2)-phy_struct->FFT_pad_size)-i-1] = phy_struct->s2s_out[phy_struct->N_samps_per_symb-i-1][1];
+        // symb_re[((phy_struct->FFT_size/2)-phy_struct->FFT_pad_size)-i-1] = phy_struct->s2s_out[phy_struct->N_samps_per_symb-i-1][0];
+        // symb_im[((phy_struct->FFT_size/2)-phy_struct->FFT_pad_size)-i-1] = phy_struct->s2s_out[phy_struct->N_samps_per_symb-i-1][1];
+        symb_re[((phy_struct->FFT_size/2)-phy_struct->FFT_pad_size)-i-1] = s2s_out[phy_struct->N_samps_per_symb-i-1][0];
+        symb_im[((phy_struct->FFT_size/2)-phy_struct->FFT_pad_size)-i-1] = s2s_out[phy_struct->N_samps_per_symb-i-1][1];
     }
 
     if(scale == 1)
     {
-        #pragma omp parallel for
+        //#pragma omp parallel for
         for(i=0; i<2*((phy_struct->FFT_size/2)-phy_struct->FFT_pad_size); i++)
         {
             symb_re[i] = cosf(atan2f(symb_im[i], symb_re[i]));
             symb_im[i] = sinf(atan2f(symb_im[i], symb_re[i]));
         }
     }
+
+    fftwf_free(s2s_in);
+    fftwf_free(s2s_out);
 }
 
 /*********************************************************************
@@ -11929,7 +12065,8 @@ void modulation_mapper(uint8                           *bits,
         break;
     case LIBLTE_PHY_MODULATION_TYPE_QPSK:
         // 3GPP TS 36.211 v10.1.0 section 7.1.2
-        for(i=0; i<(N_bits/2); i++)
+        //#pragma omp parallel for
+        for(int i=0; i<(N_bits/2); i++)
         {
             switch((bits[i*2] << 1) |
                    bits[i*2+1])
@@ -12732,7 +12869,7 @@ void modulation_demapper(float                           *d_re,
     }else{ // LIBLTE_PHY_MODULATION_TYPE_QPSK == type
         // 3GPP TS 36.211 v10.1.0 section 7.1.2
         *N_bits = M_symb*2;
-        #pragma omp parallel for
+        //#pragma omp parallel for
         for(i=0; i<M_symb; i++)
         {
             ang = atan2f(d_im[i], d_re[i]);
@@ -13120,11 +13257,13 @@ void conv_encode(LIBLTE_PHY_STRUCT *phy_struct,
     // Initialize the shift register
     if(tail_bit)
     {
+        //#pragma omp parallel for
         for(i=0; i<constraint_len; i++)
         {
             s_reg[i] = c_bits[N_c_bits-i-1];
         }
     }else{
+        //#pragma omp parallel for
         for(i=0; i<constraint_len; i++)
         {
             s_reg[i] = 0;
@@ -13134,6 +13273,7 @@ void conv_encode(LIBLTE_PHY_STRUCT *phy_struct,
     // Convert g from octal to binary array
     for(i=0; i<rate; i++)
     {
+        //#pragma omp parallel for
         for(j=0; j<constraint_len; j++)
         {
             g_array[i][j] = (g[i] >> (constraint_len-j-1)) & 1;
@@ -13196,11 +13336,13 @@ void conv_encode_soft(LIBLTE_PHY_STRUCT *phy_struct,
     // Initialize the shift register
     if(tail_bit)
     {
+        //#pragma omp parallel for
         for(i=0; i<constraint_len; i++)
         {
             s_reg[i] = c_bits[N_c_bits-i-1];
         }
     }else{
+        //#pragma omp parallel for
         for(i=0; i<constraint_len; i++)
         {
             s_reg[i] = 127;
@@ -13208,8 +13350,10 @@ void conv_encode_soft(LIBLTE_PHY_STRUCT *phy_struct,
     }
 
     // Convert g from octal to binary array
+    //#pragma omp parallel for
     for(i=0; i<rate; i++)
     {
+        //#pragma omp parallel for
         for(j=0; j<constraint_len; j++)
         {
             g_array[i][j] = (g[i] >> (constraint_len-j-1)) & 1;
@@ -13474,6 +13618,7 @@ void viterbi_decode_siso(LIBLTE_PHY_STRUCT *phy_struct,
     uint8  g_array[3][constraint_len];
 
     // Convert g to binary
+    //#pragma omp parallel for
     for(i=0; i<(int32)rate; i++)
     {
         for(j=0; j<constraint_len; j++)
@@ -13515,8 +13660,10 @@ void viterbi_decode_siso(LIBLTE_PHY_STRUCT *phy_struct,
     }
 
     // Calculate branch and path metrics
+    //#pragma omp parallel for
     for(i=0; i<(int32)N_states; i++)
     {
+        //#pragma omp parallel for
         for(j=0; j<(N_d_bits/rate)+10; j++)
         {
             phy_struct->vd_path_metric[i][j] = 0;
@@ -13672,12 +13819,14 @@ void turbo_encode(LIBLTE_PHY_STRUCT *phy_struct,
                               phy_struct->te_x_prime);
 
     // Construct d_bits
+    //#pragma omp parallel for
     for(i=0; i<N_c_bits; i++)
     {
         d_bits[i]                 = c_bits[i];
         d_bits[N_branch_bits+i]   = phy_struct->te_z[i];
         d_bits[2*N_branch_bits+i] = phy_struct->te_z_prime[i];
     }
+
     d_bits[N_c_bits]                   = phy_struct->te_fb1[N_c_bits-1];
     d_bits[N_c_bits+1]                 = phy_struct->te_z[N_c_bits+1];
     d_bits[N_c_bits+2]                 = phy_struct->te_x_prime[N_c_bits];
@@ -13754,6 +13903,7 @@ void turbo_decode(LIBLTE_PHY_STRUCT *phy_struct,
             max_value = fabs(d_bits[i*3+2]);
         }
     }
+    //#pragma omp parallel for
     for(i=0; i<N_branch_bits-4; i++)
     {
         phy_struct->td_vitdec_in[i*2+0] = (int8)(d_bits[i*3+1]*127/max_value);
@@ -13926,9 +14076,10 @@ void turbo_decode(LIBLTE_PHY_STRUCT *phy_struct,
                                  phy_struct->td_in_calc_3);
 
     // Step 14: Soft combine d0, in_calc_1, in_calc_2, and in_calc_3 to get output
+    //#pragma omp parallel for
     for(i=0; i<N_branch_bits-4; i++)
     {
-        tmp_s_bit = ((int8)(d_bits[i*3+0]*127/max_value) +
+        float tmp_s_bit = ((int8)(d_bits[i*3+0]*127/max_value) +
                      phy_struct->td_in_calc_1[i]         +
                      phy_struct->td_in_calc_2[i]         +
                      phy_struct->td_in_calc_3[i]);
@@ -14048,9 +14199,10 @@ void turbo_internal_interleaver(uint8  *in_bits,
         }
     }
 
+    //#pragma omp parallel for
     for(i=0; i<N_in_bits; i++)
     {
-        idx         = (f1*i + f2*i*i) % N_in_bits;
+        uint32 idx  = (f1*i + f2*i*i) % N_in_bits;
         out_bits[i] = in_bits[idx];
     }
 }
@@ -14074,9 +14226,10 @@ void turbo_internal_interleaver(int8   *in_bits,
         }
     }
 
+    //#pragma omp parallel for
     for(i=0; i<N_in_bits; i++)
     {
-        idx         = (f1*i + f2*i*i) % N_in_bits;
+        uint32 idx         = (f1*i + f2*i*i) % N_in_bits;
         out_bits[i] = in_bits[idx];
     }
 }
@@ -14100,9 +14253,10 @@ void turbo_internal_interleaver(float  *in_bits,
         }
     }
 
+    //#pragma omp parallel for
     for(i=0; i<N_in_bits; i++)
     {
-        idx         = (f1*i + f2*i*i) % N_in_bits;
+        uint32 idx         = (f1*i + f2*i*i) % N_in_bits;
         out_bits[i] = in_bits[idx];
     }
 }
@@ -14223,11 +14377,15 @@ void rate_match_turbo(LIBLTE_PHY_STRUCT         *phy_struct,
         }else{
             N_dummy = 0;
         }
+
+        //#pragma omp parallel for
         for(i=0; i<N_dummy; i++)
         {
             phy_struct->rmt_tmp[i] = TX_NULL_BIT;
         }
+
         d_idx = 0;
+
         for(i=N_dummy; i<C_tc_sb*R_tc_sb; i++)
         {
             phy_struct->rmt_tmp[i] = d_bits[(N_d_bits/3)*x+d_idx];
@@ -14246,9 +14404,12 @@ void rate_match_turbo(LIBLTE_PHY_STRUCT         *phy_struct,
         if(x != 2)
         {
             // Step 4: Inter-column permutation
-            for(i=0; i<R_tc_sb; i++)
+            // Modify this by Chia-Hao Chang
+            //#pragma omp parallel for
+            for(int32 i=0; i<R_tc_sb; i++)
             {
-                for(j=0; j<C_tc_sb; j++)
+                //#pragma omp parallel for
+                for(int32 j=0; j<C_tc_sb; j++)
                 {
                     phy_struct->rmt_sb_perm_mat[i][j] = phy_struct->rmt_sb_mat[i][IC_PERM_TC[j]];
                 }
@@ -14274,9 +14435,11 @@ void rate_match_turbo(LIBLTE_PHY_STRUCT         *phy_struct,
             // Step 4: Permutation for the last output
             K_pi = R_tc_sb*C_tc_sb;
             idx  = 0;
-            for(i=0; i<R_tc_sb; i++)
+            //#pragma omp parallel for
+            for(int32 i=0; i<R_tc_sb; i++)
             {
-                for(j=0; j<C_tc_sb; j++)
+                //#pragma omp parallel for
+                for(int32 j=0; j<C_tc_sb; j++)
                 {
                     phy_struct->rmt_y[idx++] = phy_struct->rmt_sb_mat[i][j];
                 }
@@ -14399,8 +14562,10 @@ void rate_unmatch_turbo(LIBLTE_PHY_STRUCT         *phy_struct,
         }
         d_idx = 0;
         for(i=N_dummy; i<C_tc_sb*R_tc_sb; i++)
-        {
-            phy_struct->rut_tmp[i] = dummy_bits[d_idx*3+x];
+        {   
+            // Modified by Chia-Hao Chang, 2015/05/29
+            //phy_struct->rut_tmp[i] = dummy_bits[d_idx*3+x];
+            phy_struct->rut_tmp[i] = dummy_bits[N_dummy_bits*x+d_idx];
             d_idx++;
         }
         idx = 0;
@@ -14416,9 +14581,11 @@ void rate_unmatch_turbo(LIBLTE_PHY_STRUCT         *phy_struct,
         if(x != 2)
         {
             // Step 4: Inter-column permutation
-            for(i=0; i<R_tc_sb; i++)
+            //#pragma omp parallel for
+            for(int32 i=0; i<R_tc_sb; i++)
             {
-                for(j=0; j<C_tc_sb; j++)
+                //#pragma omp parallel for
+                for(int32 j=0; j<C_tc_sb; j++)
                 {
                     phy_struct->rut_sb_perm_mat[i][j] = phy_struct->rut_sb_mat[i][IC_PERM_TC[j]];
                 }
@@ -14433,11 +14600,11 @@ void rate_unmatch_turbo(LIBLTE_PHY_STRUCT         *phy_struct,
                     if(x == 0)
                     {
                         phy_struct->rut_w_dum[w_idx] = phy_struct->rut_sb_perm_mat[i][j];
-                        phy_struct->rut_w[w_idx]     = RX_NULL_BIT;
+                        phy_struct->rut_w[w_idx]     = 0; // Modified by Chia-Hao Chang, 2015/05/29
                         w_idx++;
                     }else{
                         phy_struct->rut_w_dum[K_pi+(2*w_idx)] = phy_struct->rut_sb_perm_mat[i][j];
-                        phy_struct->rut_w[K_pi+(2*w_idx)]     = RX_NULL_BIT;
+                        phy_struct->rut_w[K_pi+(2*w_idx)]     = 0; // Modified by Chia-Hao Chang, 2015/05/29
                         w_idx++;
                     }
                 }
@@ -14446,9 +14613,9 @@ void rate_unmatch_turbo(LIBLTE_PHY_STRUCT         *phy_struct,
             // Step 4: Permutation for the last output
             K_pi = R_tc_sb*C_tc_sb;
             idx  = 0;
-            for(i=0; i<R_tc_sb; i++)
+            for(int32 i=0; i<R_tc_sb; i++)
             {
-                for(j=0; j<C_tc_sb; j++)
+                for(int32 j=0; j<C_tc_sb; j++)
                 {
                     phy_struct->rut_y[idx++] = phy_struct->rut_sb_mat[i][j];
                 }
@@ -14457,7 +14624,7 @@ void rate_unmatch_turbo(LIBLTE_PHY_STRUCT         *phy_struct,
             {
                 pi_idx                                  = (IC_PERM_TC[i/R_tc_sb]+C_tc_sb*(i%R_tc_sb)+1)%K_pi;
                 phy_struct->rut_w_dum[K_pi+(2*w_idx)+1] = phy_struct->rut_y[pi_idx];
-                phy_struct->rut_w[K_pi+(2*w_idx)+1]     = RX_NULL_BIT;
+                phy_struct->rut_w[K_pi+(2*w_idx)+1]     = 0; // Modified by Chia-Hao Chang, 2015/05/29
                 w_idx++;
             }
         }
@@ -14501,7 +14668,7 @@ void rate_unmatch_turbo(LIBLTE_PHY_STRUCT         *phy_struct,
         if(phy_struct->rut_w_dum[(k_0+j)%N_cb] != RX_NULL_BIT)
         {
             // Soft combine the inputs
-            if(phy_struct->rut_w[(k_0+j)%N_cb] == RX_NULL_BIT)
+            if(phy_struct->rut_w[(k_0+j)%N_cb] == 0) // Modified by Chia-Hao Chang, 2015/05/29
             {
                 phy_struct->rut_w[(k_0+j)%N_cb] = e_bits[k];
             }else if(e_bits[k] != RX_NULL_BIT){
@@ -14579,7 +14746,9 @@ void rate_unmatch_turbo(LIBLTE_PHY_STRUCT         *phy_struct,
         d_idx = 0;
         for(i=N_dummy; i<C_tc_sb*R_tc_sb; i++)
         {
-            d_bits[d_idx*3+x] = phy_struct->rut_tmp[i];
+            // Modified by Chia-Hao Chang, 2015/05/29   
+            d_bits[d_idx*3+x] = phy_struct->rut_tmp[i]; 
+            //d_bits[N_dummy_bits*x+d_idx] = phy_struct->rut_tmp[i];
             d_idx++;
         }
     }
@@ -14732,10 +14901,12 @@ void rate_unmatch_conv(LIBLTE_PHY_STRUCT *phy_struct,
         }else{
             N_dummy = 0;
         }
+        //#pragma omp parallel for
         for(i=0; i<N_dummy; i++)
         {
             phy_struct->ruc_tmp[i] = RX_NULL_BIT;
         }
+        //#pragma omp parallel for
         for(i=N_dummy; i<C_cc_sb*R_cc_sb; i++)
         {
             phy_struct->ruc_tmp[i] = 0;
@@ -14750,8 +14921,10 @@ void rate_unmatch_conv(LIBLTE_PHY_STRUCT *phy_struct,
         }
 
         // Step 4: Inter-column permutation
-        for(i=0; i<R_cc_sb; i++)
+       #pragma omp parallel for 
+       for(i=0; i<R_cc_sb; i++)
         {
+            //#pragma omp parallel for
             for(j=0; j<C_cc_sb; j++)
             {
                 phy_struct->ruc_sb_perm_mat[i][j] = phy_struct->ruc_sb_mat[i][IC_PERM_CC[j]];
@@ -14793,7 +14966,7 @@ void rate_unmatch_conv(LIBLTE_PHY_STRUCT *phy_struct,
     }
 
     // Recreate the sub-block interleaver output
-    #pragma omp parallel for
+    //#pragma omp parallel for
     for(i=0; i<K_pi; i++)
     {
         phy_struct->ruc_v[0][i] = phy_struct->ruc_w[i];
@@ -15581,12 +15754,15 @@ LIBLTE_ERROR_ENUM ulsch_channel_decode(LIBLTE_PHY_STRUCT *phy_struct,
 
     // Check CRC
     ber = 0;
+    //#pragma omp parallel for
     for(i=0; i<24; i++)
     {
         ber += p_bits[i] ^ calc_p_bits[i];
     }
+
     if(ber == 0)
     {
+        //#pragma omp parallel for
         for(i=0; i<tbs; i++)
         {
             out_bits[i] = a_bits[i];
@@ -15727,6 +15903,7 @@ LIBLTE_ERROR_ENUM bch_channel_decode(LIBLTE_PHY_STRUCT *phy_struct,
     ber_1 = 0;
     ber_2 = 0;
     ber_4 = 0;
+    //#pragma omp parallel for
     for(i=0; i<16; i++)
     {
         ber_1 += p_bits[i] ^ (calc_p_bits[i] ^ ant_mask_1[i]);
@@ -15736,6 +15913,7 @@ LIBLTE_ERROR_ENUM bch_channel_decode(LIBLTE_PHY_STRUCT *phy_struct,
 
     if(ber_1 == 0 || ber_2 == 0 || ber_4 == 0)
     {
+        //#pragma omp parallel for
         for(i=0; i<24; i++)
         {
             out_bits[i] = a_bits[i];
@@ -15790,15 +15968,18 @@ void dlsch_channel_encode(LIBLTE_PHY_STRUCT *phy_struct,
     a_bits = in_bits;
 
     // Pad input up to tbs size, calculate p_bits, and construct b_bits
+    //#pragma omp parallel for
     for(i=0; i<N_in_bits; i++)
     {
         phy_struct->dlsch_b_bits[i] = a_bits[i];
     }
+    //#pragma omp parallel for
     for(i=N_in_bits; i<tbs; i++)
     {
         phy_struct->dlsch_b_bits[i] = 0;
     }
     calc_crc(phy_struct->dlsch_b_bits, tbs, CRC24A, p_bits, 24);
+    //#pragma omp parallel for
     for(i=0; i<24; i++)
     {
         phy_struct->dlsch_b_bits[tbs+i] = p_bits[i];
@@ -15996,6 +16177,7 @@ void dci_channel_encode(LIBLTE_PHY_STRUCT *phy_struct,
     uint8  p_bits[16];
 
     // Convert RNTI to bit array
+    //#pragma omp parallel for
     for(i=0; i<16; i++)
     {
         x_rnti_bits[i] = (rnti >> (15-i)) & 1;
@@ -16012,16 +16194,19 @@ void dci_channel_encode(LIBLTE_PHY_STRUCT *phy_struct,
     calc_crc(in_bits, N_in_bits, CRC16, p_bits, 16);
 
     // Mask p_bits
+    //#pragma omp parallel for
     for(i=0; i<16; i++)
     {
         p_bits[i] ^= x_rnti_bits[i] ^ x_as_bits[i];
     }
 
     // Construct c_bits
+    //#pragma omp parallel for
     for(i=0; i<N_in_bits; i++)
     {
         phy_struct->dci_c_bits[i] = in_bits[i];
     }
+    //#pragma omp parallel for
     for(i=0; i<16; i++)
     {
         phy_struct->dci_c_bits[N_in_bits+i] = p_bits[i];
@@ -16106,6 +16291,7 @@ LIBLTE_ERROR_ENUM dci_channel_decode(LIBLTE_PHY_STRUCT *phy_struct,
     // Calculate p_bits
     calc_crc(a_bits, N_out_bits, CRC16, calc_p_bits, 16);
 
+    //#pragma omp parallel for
     for(j=0; j<rnti_range; j++)
     {
         // Convert RNTI to bit array
@@ -16498,8 +16684,15 @@ void dci_1a_unpack(uint8                           *in_bits,
         // Find the RIV that was sent 3GPP TS 36.213 v10.3.0 section 7.1.6.3
         RIV_length   = (uint32)ceilf(logf(N_rb_dl*(N_rb_dl+1)/2)/logf(2));
         RIV          = bits_2_value(&dci, RIV_length);
-        alloc->N_prb = RIV/N_rb_dl + 1;
-        RB_start     = RIV % N_rb_dl;
+        
+        if(RIV/N_rb_dl + RIV%N_rb_dl < N_rb_dl)
+        {
+            alloc->N_prb = RIV/N_rb_dl + 1;
+            RB_start     = RIV % N_rb_dl;
+        }else{
+            alloc->N_prb = N_rb_dl - RIV/N_rb_dl + 1;
+            RB_start     = N_rb_dl - RIV%N_rb_dl -1;
+        }
 
         // Extract the rest of the fields
         alloc->mcs    = bits_2_value(&dci, 5);
@@ -16840,6 +17033,8 @@ void cfi_channel_encode(LIBLTE_PHY_STRUCT *phy_struct,
     }else{
         cfi_bits = CFI_BITS_4;
     }
+
+    //#pragma omp parallel for
     for(i=0; i<*N_out_bits; i++)
     {
         out_bits[i] = cfi_bits[i];
@@ -16955,19 +17150,20 @@ void get_ul_ce(LIBLTE_PHY_STRUCT *phy_struct,
     dmrs_1_re = phy_struct->dmrs_1_re[N_subfr][N_prb];
     dmrs_1_im = phy_struct->dmrs_1_im[N_subfr][N_prb];
 
-    for(i=0; i<M_pusch_sc; i++)
+    //#pragma omp parallel for
+    for(int i=0; i<M_pusch_sc; i++)
     {
-        tmp_re = c_est_0_re[i]*dmrs_0_re[i] + c_est_0_im[i]*dmrs_0_im[i];
-        tmp_im = c_est_0_im[i]*dmrs_0_re[i] - c_est_0_re[i]*dmrs_0_im[i];
-        mag_0  = sqrt(tmp_re*tmp_re + tmp_im*tmp_im);
-        ang_0  = atan2f(tmp_im, tmp_re);
-        tmp_re = c_est_1_re[i]*dmrs_1_re[i] + c_est_1_im[i]*dmrs_1_im[i];
-        tmp_im = c_est_1_im[i]*dmrs_1_re[i] - c_est_1_re[i]*dmrs_1_im[i];
-        mag_1  = sqrt(tmp_re*tmp_re + tmp_im*tmp_im);
-        ang_1  = atan2f(tmp_im, tmp_re);
+        float tmp_re = c_est_0_re[i]*dmrs_0_re[i] + c_est_0_im[i]*dmrs_0_im[i];
+        float tmp_im = c_est_0_im[i]*dmrs_0_re[i] - c_est_0_re[i]*dmrs_0_im[i];
+        float mag_0  = sqrt(tmp_re*tmp_re + tmp_im*tmp_im);
+        float ang_0  = atan2f(tmp_im, tmp_re);
+              tmp_re = c_est_1_re[i]*dmrs_1_re[i] + c_est_1_im[i]*dmrs_1_im[i];
+              tmp_im = c_est_1_im[i]*dmrs_1_re[i] - c_est_1_re[i]*dmrs_1_im[i];
+        float mag_1  = sqrt(tmp_re*tmp_re + tmp_im*tmp_im);
+        float ang_1  = atan2f(tmp_im, tmp_re);
 
-        frac_mag = (mag_1 - mag_0)/7;
-        frac_ang = (ang_1 - ang_0);
+        float frac_mag = (mag_1 - mag_0)/7;
+        float frac_ang = (ang_1 - ang_0);
         if(frac_ang >= M_PI) // Wrap angle
         {
             frac_ang -= 2*M_PI;
@@ -16976,7 +17172,8 @@ void get_ul_ce(LIBLTE_PHY_STRUCT *phy_struct,
         }
         frac_ang /= 7;
 
-        for(L=0; L<3; L++)
+        //#pragma omp parallel for
+        for(int L=0; L<3; L++)
         {
             ce_mag[L]   = mag_0 - (3-L)*frac_mag;
             ce_ang[L]   = ang_0 - (3-L)*frac_ang;
@@ -16987,7 +17184,8 @@ void get_ul_ce(LIBLTE_PHY_STRUCT *phy_struct,
             ce_mag[9+L] = mag_1 + (1+L)*frac_mag;
             ce_ang[9+L] = ang_1 + (1+L)*frac_ang;
         }
-        for(L=0; L<12; L++)
+        //#pragma omp parallel for
+        for(int L=0; L<12; L++)
         {
             c_est_re[L*M_pusch_sc + i] = ce_mag[L]*cos(ce_ang[L]);
             c_est_im[L*M_pusch_sc + i] = ce_mag[L]*sin(ce_ang[L]);

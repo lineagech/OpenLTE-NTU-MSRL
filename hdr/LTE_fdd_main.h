@@ -34,6 +34,7 @@
 *******************************************************************************/
 using namespace std;
 
+//static int32 BS_recv_more = 0;
 /*******************************************************************************
                               TYPEDEFS
 *******************************************************************************/
@@ -106,6 +107,32 @@ public:
     
         return(value);
     }
+    void value_2_bits(int16   value,
+                      uint8  **bits,
+                      uint32   N_bits)
+    {
+        uint32 i;
+    
+        for(i=0; i<N_bits; i++)
+        {
+            (*bits)[i] = (value >> (N_bits-i-1)) & 0x1;
+        }
+        *bits += N_bits;
+    }
+    int16 bits_2_value(uint8  **bits,
+                        uint32   N_bits)
+    {
+        int16 value = 0;
+        uint32 i;
+    
+        for(i=0; i<N_bits; i++)
+        {
+            value |= (*bits)[i] << (N_bits-i-1);
+        }
+        *bits += N_bits;
+    
+        return(value);
+    }
 
     /***********************/
     /*    Communication    */
@@ -121,9 +148,16 @@ public:
 
     // intentional public data
     LIBLTE_PHY_SUBFRAME_STRUCT         dl_subframe;
+    float TX_RAN_RE[LIBLTE_PHY_N_ANT_MAX][16][LIBLTE_PHY_N_RB_DL_20MHZ*LIBLTE_PHY_N_SC_RB_DL_NORMAL_CP];
+    float TX_RAN_IM[LIBLTE_PHY_N_ANT_MAX][16][LIBLTE_PHY_N_RB_DL_20MHZ*LIBLTE_PHY_N_SC_RB_DL_NORMAL_CP];
+    LIBLTE_PHY_STRUCT *phy_struct;
+
+    // Timing Advance
+    int32 BS_recv_more;
+    LIBLTE_PHY_ALLOCATION_STRUCT timing_advance;
 
 private:
-    LIBLTE_PHY_STRUCT *phy_struct;
+    
     static LTE_fdd_enb_phy *instance;
 
     LTE_FDD_ENB_SYS_INFO_STRUCT        sys_info;

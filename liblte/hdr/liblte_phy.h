@@ -71,6 +71,7 @@
 *******************************************************************************/
 #include <chrono>
 #include <omp.h>
+
 #include "liblte_common.h"
 #include "liblte_rrc.h"
 #include "fftw3.h"
@@ -291,6 +292,9 @@ typedef struct{
     float          prach_prev_fft_diff_corr_re[128*12];
     float          prach_prev_fft_diff_corr_im[128*12];
 
+    float          prach_in_diff_re[128*12];
+    float          prach_in_diff_im[128*12];
+
     uint32         prach_zczc;
     uint32         prach_preamble_format;
     uint32         prach_root_seq_idx;
@@ -409,6 +413,10 @@ typedef struct{
     float dl_ce_mag[5][LIBLTE_PHY_N_RB_DL_20MHZ*LIBLTE_PHY_N_SC_RB_DL_NORMAL_CP];
     float dl_ce_ang[5][LIBLTE_PHY_N_RB_DL_20MHZ*LIBLTE_PHY_N_SC_RB_DL_NORMAL_CP];
 
+    // Added by Chia-Hao Chang
+    float DL_RS_re[10][16][LIBLTE_PHY_N_RB_DL_20MHZ*LIBLTE_PHY_N_SC_RB_DL_NORMAL_CP];
+    float DL_RS_im[10][16][LIBLTE_PHY_N_RB_DL_20MHZ*LIBLTE_PHY_N_SC_RB_DL_NORMAL_CP];
+
     // PSS
     float pss_mod_re_n3[3][LIBLTE_PHY_N_RB_DL_20MHZ*LIBLTE_PHY_N_SC_RB_DL_NORMAL_CP];
     float pss_mod_im_n3[3][LIBLTE_PHY_N_RB_DL_20MHZ*LIBLTE_PHY_N_SC_RB_DL_NORMAL_CP];
@@ -425,6 +433,9 @@ typedef struct{
     float pss_mod_re_p3[3][LIBLTE_PHY_N_RB_DL_20MHZ*LIBLTE_PHY_N_SC_RB_DL_NORMAL_CP];
     float pss_mod_im_p3[3][LIBLTE_PHY_N_RB_DL_20MHZ*LIBLTE_PHY_N_SC_RB_DL_NORMAL_CP];
 
+    float Gen_PSS_RE[63];
+    float Gen_PSS_IM[63];
+    
     // SSS
     float sss_mod_re_0[168][LIBLTE_PHY_N_RB_DL_20MHZ*LIBLTE_PHY_N_SC_RB_DL_NORMAL_CP];
     float sss_mod_im_0[168][LIBLTE_PHY_N_RB_DL_20MHZ*LIBLTE_PHY_N_SC_RB_DL_NORMAL_CP];
@@ -570,6 +581,9 @@ typedef struct{
     float  r_p_tilda_PUCCH_im[3*12];
     float  pucch_ce_mag[14][12];
     float  pucch_ce_ang[14][12];
+    float  pucch_ce_re[14][12];
+    float  pucch_ce_im[14][12];
+
 
     fftwf_complex *pucch_fft_in;
     fftwf_complex *pucch_fft_out;

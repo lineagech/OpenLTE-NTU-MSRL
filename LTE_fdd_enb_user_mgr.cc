@@ -106,6 +106,13 @@ LTE_fdd_enb_user_mgr::LTE_fdd_enb_user_mgr()
 }
 LTE_fdd_enb_user_mgr::~LTE_fdd_enb_user_mgr()
 {
+    for(auto it=c_rnti_map.begin(); it!=c_rnti_map.end(); it++)
+    {
+        cerr << "User C_RNTI " << it->first << endl;
+        for(int i=0; i<it->second->uplink_received_msg.size(); i++)
+            print_msg(&(it->second)->uplink_received_msg[i], 0);
+    }
+
 }
 
 /****************************/
@@ -487,6 +494,33 @@ void LTE_fdd_enb_user_mgr::set_dl_sched(uint16 c_rnti, uint32 work_tti, bool fli
     sched_mutex.unlock();
 }
 
+void LTE_fdd_enb_user_mgr::set_dl_sched(uint16 c_rnti, 
+                                        uint32 work_tti, 
+                                        bool flip_ndi, 
+                                        LIBLTE_PHY_CHAN_TYPE_ENUM tran_chan, 
+                                        string msg_char, 
+                                        int32 num_bits, 
+                                        uint8 mcs)
+{   
+    LTE_fdd_enb_user* usr;
+    find_user(c_rnti, &usr);
+
+    sched_mutex.lock();
+    // Reconfigure user's ul_msg / dl_msg
+    if(flip_ndi)
+    { // New transmission,
+        usr->alloc_chan_type = tran_chan;
+        usr->set_new_transmission(msg_char, num_bits, mcs);
+    }else{
+      // Retransmission
+        usr->set_retransmission();
+    }
+    tti_map[c_rnti] = work_tti;
+
+    user_scheduling = true;
+    sched_mutex.unlock();
+}
+
 bool LTE_fdd_enb_user_mgr::check_dl_sched(uint32 work_tti)
 {
     LTE_fdd_enb_user* usr;
@@ -496,7 +530,11 @@ bool LTE_fdd_enb_user_mgr::check_dl_sched(uint32 work_tti)
         if(tti_map[LIBLTE_MAC_C_RNTI_START+i] == work_tti){
             return false;
         }
-        if((tti_map[LIBLTE_MAC_C_RNTI_START+i]+8)==work_tti 
+        if((tti_map[LIBLTE_MAC_C_RNTI_START+i]+4)%(LTE_FDD_ENB_CURRENT_TTI_MAX+1)==work_tti 
+        && usr->alloc_chan_type==LIBLTE_PHY_CHAN_TYPE_ULSCH ){
+            return false;
+        }
+        if((tti_map[LIBLTE_MAC_C_RNTI_START+i]+8)%(LTE_FDD_ENB_CURRENT_TTI_MAX+1)==work_tti 
         && usr->alloc_chan_type==LIBLTE_PHY_CHAN_TYPE_ULSCH ){
             return false;
         }

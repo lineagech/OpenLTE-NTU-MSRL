@@ -94,6 +94,7 @@ public:
     void receive_msg(uint16 c_rnti, LTE_FDD_ENB_PUSCH_DECODE_MSG_STRUCT *pusch_decode);
     void find_ul_user(uint32 ul_current_tti, uint16* c_rnti);
     void set_dl_sched(uint16 c_rnti, uint32 work_tti, bool flip_ndi, LIBLTE_PHY_CHAN_TYPE_ENUM tran_chan);
+    void set_dl_sched(uint16 c_rnti, uint32 work_tti, bool flip_ndi, LIBLTE_PHY_CHAN_TYPE_ENUM tran_chan, string msg_char, int32 num_bits, uint8 mcs);
     void get_dl_sched(LTE_FDD_ENB_DL_SCHEDULE_MSG_STRUCT* dl_sched);
     void get_ul_sched(LTE_FDD_ENB_UL_SCHEDULE_MSG_STRUCT* ul_sched);
     bool check_dl_sched(uint32 work_tti);

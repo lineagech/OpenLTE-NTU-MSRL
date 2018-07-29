@@ -42,11 +42,12 @@ namespace po = boost::program_options;
 int main(int argc, char* argv[]){
 
     uint16  user_c_rnti;
-
+    float   sample_rate;
 	po::options_description desc("Allowed options");
     desc.add_options()
         ("help", "help message")
         ("rnti", po::value<uint16>(&user_c_rnti)->default_value(61), "C_RNTI")
+        ("sample_rate", po::value<float>(&sample_rate)->default_value(1.92*1e6), "Sample Rate")
         ;
     po::variables_map vm;
 	po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -78,6 +79,8 @@ int main(int argc, char* argv[]){
 
     Radio* radio_usrp           = Radio::get_instance();
     radio_usrp->external_c_rnti = user_c_rnti;
+    radio_usrp->sampling_freq   = sample_rate;
+    radio_usrp->init();
 
 #ifdef MESSAGEQUEUE  
     radio_usrp->recv_from_mq(NULL);

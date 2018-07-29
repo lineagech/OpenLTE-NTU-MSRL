@@ -51,9 +51,15 @@ using namespace std;
 /*******************************************************************************
                               STATIC VARIABLES
 *******************************************************************************/
-static float ZERO_SIGNAL[1920] = {0.0};
-static float TX_SIGNAL_RE[1920] = {0.0};
-static float TX_SIGNAL_IM[1920] = {0.0};
+static float ZERO_SIGNAL[1920]          = {0.0};
+static float TX_SIGNAL_RE[1920]         = {0.0};
+static float TX_SIGNAL_IM[1920]         = {0.0};
+static float TX_OFDM_SYMBOL_RE[19200]   = {0.0};
+static float TX_OFDM_SYMBOL_IM[19200]   = {0.0};
+static uint32 samp_nu                   = 0;
+static int32  cfi_failed_nu             = 0;
+static bool   continous_cfi_failed      = false;
+static int32 recv_more                  = 0;
 
 /*******************************************************************************
                               TYPEDEFS
@@ -256,8 +262,35 @@ public:
     
         return(value);
     }
+    void value_2_bits(int16   value,
+                      uint8  **bits,
+                      uint32   N_bits)
+    {
+        uint32 i;
+    
+        for(i=0; i<N_bits; i++)
+        {
+            (*bits)[i] = (value >> (N_bits-i-1)) & 0x1;
+        }
+        *bits += N_bits;
+    }
+    int16 bits_2_value(uint8  **bits,
+                        uint32   N_bits)
+    {
+        int16 value = 0;
+        uint32 i;
+    
+        for(i=0; i<N_bits; i++)
+        {
+            value |= (*bits)[i] << (N_bits-i-1);
+        }
+        *bits += N_bits;
+    
+        return(value);
+    }
 
-
+    int16                           timing_advance;
+    
     uint16                          C_RNTI;
     uint32                          sfn;
     uint32                          current_tti;
@@ -302,7 +335,7 @@ public:
     HARQ_process                                harq_proc[8];
     HARQ_process                                ul_harq_proc[8];
     LIBLTE_PHY_PDCCH_STRUCT                     pdcch;
-
+    LIBLTE_PHY_PDCCH_STRUCT                     prev_alloc;
 
     // Uplink thread mutex 
     boost::mutex    ul_tx_mutex;

@@ -2,10 +2,10 @@ PROG = BS
 PROG_Debug = Debug
 CC := g++
 Opt = -O3
-CPPFLAGS = -g $(Opt) -I./liblte/hdr -I./hdr  -I./libtools/hdr -std=c++11 
+CPPFLAGS = -g $(Opt) -I./liblte/hdr -I./hdr  -I./libtools/hdr -std=c++11 -fopenmp
 
 LIBS = -lm -lstdc++ -lfftw3f -lboost_system -lpthread \
-       -lrt -lboost_thread -luhd -lboost_program_options
+       -lrt -lboost_thread -luhd -lboost_program_options -fopenmp
 
 DIR_liblte = ./liblte/src
 DIR_libtools = ./libtools/src
@@ -48,12 +48,13 @@ OBJS = 	BS.o 						\
 
 
 OBJS_mq = $(subst BS,BS_mq,$(OBJS))
+OBJS_1_92_MHz = $(subst BS,BS_1_92_MHz,$(OBJS))
 
 ECHO      = /bin/echo
 
 .SUFFIXS: .c .cpp .cc 
 
-all:$(PROG) UE BS_mq UE_mq
+all:$(PROG) UE BS_mq UE_mq BS_1_92_MHz
 
 $(PROG):$(OBJS) 
 	$(CC) $(OBJS) $(LIBS) $(Opt) -o $@
@@ -62,6 +63,11 @@ UE:UE.o LTE_UE.o liblte_phy.o liblte_common.o liblte_rrc.o LTE_message_queue.o
 	$(CC) $(Opt) UE.o LTE_UE.o liblte_phy.o liblte_common.o liblte_rrc.o LTE_message_queue.o $(LIBS) -g -o $@
 
 #########################################################################################
+
+BS_1_92_MHz:${OBJS_1_92_MHz}
+	$(CC) $(OBJS_1_92_MHz) $(LIBS) $(Opt) -o $@
+BS_1_92_MHz.o:BS_1_92_MHz.cpp
+	$(CC) $(CPPFLAGS) -c $< -o $@
 
 BS_mq:${OBJS_mq}
 	$(CC) $(OBJS_mq) $(LIBS) $(Opt) -o $@
@@ -86,7 +92,7 @@ UE.o:UE.cpp
 
 %.o:${DIR_libtools}/%.cc
 	$(CC) $(CPPFLAGS) -c $< 
-
+	
 %.o:${DIR_enb_ue}/%.cc  
 	$(CC) $(CPPFLAGS) -c $<
 

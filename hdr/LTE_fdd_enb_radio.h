@@ -97,6 +97,7 @@ public:
     // Start/Stop
     bool is_started(void);
     LTE_FDD_ENB_ERROR_ENUM start(void);
+    LTE_FDD_ENB_ERROR_ENUM start_for_1_92_MHz(void);
     LTE_FDD_ENB_ERROR_ENUM stop(void);
 
     // External interface
@@ -126,6 +127,10 @@ public:
     uhd::time_spec_t next_tx_ts;
     uint32           fs;
 
+    // Radios
+    uhd::usrp::multi_usrp::sptr         usrp_0; // RX
+    uhd::usrp::multi_usrp::sptr         usrp_1; // TX
+
 private:
     // Singleton
     static LTE_fdd_enb_radio *instance;
@@ -136,9 +141,7 @@ private:
     boost::mutex start_mutex;
     bool         started;
 
-    // Radios
-    uhd::usrp::multi_usrp::sptr         usrp_0; // RX
-    uhd::usrp::multi_usrp::sptr         usrp_1; // TX
+    
     
     LTE_FDD_ENB_AVAILABLE_RADIOS_STRUCT available_radios;
     uint32                              selected_radio_idx;

@@ -160,6 +160,7 @@ public:
     vector<LIBLTE_BIT_MSG_STRUCT>  uplink_received_msg;
 
     void set_new_transmission();
+    void set_new_transmission(string& msg_char, int32 num_bits, uint8 mcs);
     void set_retransmission();
 
     void set_ul_msg(uint32 N_bits);
@@ -183,7 +184,8 @@ public:
                         uint8                           tpc,
                         bool                            ndi);
 
-
+    // For Demo...
+    uint8 Modulation_and_CodingScheme;
 
 private:
     // Identity

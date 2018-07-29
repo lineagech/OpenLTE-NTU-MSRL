@@ -422,13 +422,18 @@ void LTE_fdd_enb_user::set_dl_msg(uint32 N_bits, uint8* msg_bits, uint32 rv_idx)
 
     msg_bits_struct.N_bits = N_bits;
     memcpy(msg_bits_struct.msg, msg_bits, sizeof(uint8)*N_bits);
+
+    // MCS
+    //Modulation_and_CodingScheme = 0;
     
     liblte_phy_get_tbs_and_n_prb_for_dl(msg_bits_struct.N_bits,
                                         sys_info.N_rb_dl,
-                                        0, // fixed by Chia-Hao Chang, 36.213 table 7.1.7.1-1
+                                        Modulation_and_CodingScheme, // fixed by Chia-Hao Chang, 36.213 table 7.1.7.1-1
                                         &tbs,
                                         &N_prb);
-    for(i=0; i<N_prb; i++)
+    cerr << "N_prb "<< N_prb<<endl;
+    cerr << "tbs "<< tbs <<endl;
+    for(int i=0; i<N_prb; i++)
     {
         Msg_Alloc_PRB[0][i] = last_prb;
         Msg_Alloc_PRB[1][i] = last_prb++;
@@ -446,7 +451,7 @@ void LTE_fdd_enb_user::set_dl_msg(uint32 N_bits, uint8* msg_bits, uint32 rv_idx)
                    1,   // N_layers
                    1,   // tx_mode
                    c_rnti,
-                   0,   // mcs
+                   Modulation_and_CodingScheme,   // mcs
                    0,   // tpc
                    dl_ndi);
 }
@@ -474,7 +479,7 @@ void LTE_fdd_enb_user::set_ul_msg(uint32 N_bits)
                    LIBLTE_PHY_MODULATION_TYPE_QPSK,         // fixed
                    LIBLTE_PHY_CHAN_TYPE_ULSCH,              // fixed
                    tbs,
-                   0,                                       // rv_idx
+                   Redundancy_Version_Idx,                  // rv_idx
                    N_prb,
                    Msg_Alloc_PRB,
                    1,                                       // N_codewords
@@ -563,6 +568,30 @@ void LTE_fdd_enb_user::set_new_transmission()
         set_ul_msg(Msg_N_Bits);
     }
 }
+
+void LTE_fdd_enb_user::set_new_transmission(string& msg_char, int32 num_bits, uint8 mcs)
+{
+    Redundancy_Version_Idx = 0;
+    Modulation_and_CodingScheme = mcs;
+    if(this->alloc_chan_type == LIBLTE_PHY_CHAN_TYPE_DLSCH)
+    {   
+        uint8* tmp = Msg_Bits;
+
+        for(int i=0; i<num_bits/8; i++)
+            value_2_bits((msg_char[i]), &tmp, 8);
+        Msg_N_Bits          = num_bits;  // fixed by Chia-Hao Chang, for real-time
+        this->flip_dl_ndi();
+        set_dl_msg(Msg_N_Bits, Msg_Bits, Redundancy_Version_Idx);
+
+    }else{
+        Msg_N_Bits          = 32;  // fixed by Chia-Hao Chang
+        ul_msg.msg.N_bits   = 32;
+        this->flip_ul_ndi();
+        set_ul_msg(Msg_N_Bits);
+    }
+}
+
+
 void LTE_fdd_enb_user::set_retransmission()
 {
     this->update_rv_idx();
